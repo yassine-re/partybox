@@ -8,14 +8,22 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
+	"partybox/backend/internal/ai"
 	"partybox/backend/internal/models"
 	"partybox/backend/internal/repositories"
 )
 
-type Service struct{ Repo *repositories.Repository }
+type Service struct {
+	Repo *repositories.Repository
+	AI   ai.MissionGenerator
+
+	aiUsageMu sync.Mutex
+	aiUsage   map[string]aiGenerationUsage
+}
 
 func cleanName(value string, max int) (string, error) {
 	value = strings.TrimSpace(value)
@@ -98,10 +106,24 @@ func (s *Service) Game(ctx context.Context, id string, p models.Player) (models.
 }
 
 func (s *Service) Start(ctx context.Context, id string, p models.Player) error {
+	if p.GameID != id || !p.IsHost {
+		return models.ErrForbidden
+	}
+	if err := s.beginGameTransition(id); err != nil {
+		return err
+	}
+	defer s.finishGameTransition(id)
 	return s.transition(ctx, id, p, "playing")
 }
 
 func (s *Service) End(ctx context.Context, id string, p models.Player) error {
+	if p.GameID != id || !p.IsHost {
+		return models.ErrForbidden
+	}
+	if err := s.beginGameTransition(id); err != nil {
+		return err
+	}
+	defer s.finishGameTransition(id)
 	return s.transition(ctx, id, p, "ended")
 }
 

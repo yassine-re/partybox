@@ -32,6 +32,7 @@
   let nickname = $state("");
   let loading = $state(true);
   let busy = $state(false);
+  let aiGenerating = $state(false);
   let error = $state("");
   let notice = $state("");
   let storageWarning = $state(false);
@@ -255,7 +256,7 @@
   }
 
   function start() {
-    if (session) {
+    if (session && !aiGenerating) {
       const current = session;
       void action(async () => {
         await api.start(current.gameId, current.token);
@@ -263,7 +264,7 @@
     }
   }
   function end() {
-    if (session) {
+    if (session && !aiGenerating) {
       const current = session;
       void action(async () => {
         await api.end(current.gameId, current.token);
@@ -325,9 +326,11 @@
       {game}
       {players}
       {playerId}
+      token={session?.token}
       {busy}
       onshare={share}
       onstart={start}
+      onaigeneratingchange={(generating) => (aiGenerating = generating)}
     />
   {:else if game.status === "playing"}
     <PlayingView
@@ -360,7 +363,7 @@
     >
     {#if me?.is_host && game.status !== "ended"}<button
         class="text-button end-button"
-        disabled={busy}
+        disabled={busy || aiGenerating}
         onclick={() => (confirmEnd = !confirmEnd)}
         >{game.status === "lobby"
           ? "Fermer le lobby"
@@ -377,9 +380,9 @@
       </div>
       <button
         class="button outline"
-        disabled={busy}
+        disabled={busy || aiGenerating}
         onclick={() => (confirmEnd = false)}>Continuer à jouer</button
-      ><button class="button danger" disabled={busy} onclick={end}
+      ><button class="button danger" disabled={busy || aiGenerating} onclick={end}
         >Oui, terminer</button
       >
     </section>{/if}

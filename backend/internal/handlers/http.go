@@ -43,7 +43,14 @@ func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.E
 			return
 		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8192)
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		timeout := 10 * time.Second
+		if strings.HasSuffix(c.Request.URL.Path, "/ai-missions/generate") {
+			timeout = 45 * time.Second
+			// The server keeps a short global WriteTimeout. Gin exposes the
+			// underlying writer, so only this long-running route gets more time.
+			_ = http.NewResponseController(c.Writer).SetWriteDeadline(time.Now().Add(50 * time.Second))
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
@@ -62,6 +69,7 @@ func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.E
 	h.registerGameRoutes(public, auth)
 	h.registerPlayerRoutes(auth)
 	h.registerRealtimeRoutes(public, auth)
+	h.registerAIRoutes(auth)
 	r.NoRoute(func(c *gin.Context) { respond(c, nil, models.ErrNotFound, 0) })
 	return r
 }

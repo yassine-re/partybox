@@ -17,7 +17,7 @@ docker compose up --build
 
 Ouvrir **[http://localhost:3000/box/PB001](http://localhost:3000/box/PB001)**.
 
-Compose attend PostgreSQL, applique les migrations, exécute le seed idempotent, puis démarre l’API et le frontend. La box `PB001`, **18 missions secrètes** et **15 défis de chasse au trésor** sont créés automatiquement. Aucune partie ni joueur de démonstration n’est créé.
+Compose attend PostgreSQL, applique les migrations, exécute le seed idempotent, puis démarre l’API et le frontend. La box `PB001`, **18 missions secrètes** et **15 défis de chasse au trésor** sont créés automatiquement. Aucune partie ni joueur de démonstration n’est créé. La génération IA reste optionnelle et désactivée tant que `OPENAI_API_KEY` et `OPENAI_MODEL` ne sont pas renseignés.
 
 Pour lancer en arrière-plan, suivre les logs ou arrêter :
 
@@ -49,6 +49,7 @@ PostgreSQL :5432
 
 - **Frontend** : SvelteKit 2, Svelte 5, TypeScript, CSS simple et composants réutilisables. Interface mobile sombre, accents citron et rose. Aucun framework CSS ni gestionnaire d’état supplémentaire. Le build utilise `adapter-node` pour le déploiement sur VPS.
 - **Backend** : les handlers gèrent HTTP/JSON, les services gèrent les règles et l’enchaînement transactionnel, les repositories contiennent le SQL et les verrous PostgreSQL. Pas d’ORM.
+- **IA** : `internal/ai` implémente un fournisseur de contenu derrière `MissionGenerator`. OpenAI produit un catalogue JSON structuré ; PartyBox conserve l’attribution, la validation, les scores et le fallback vers le seed.
 - **Communication** : REST reste la source de vérité via `frontend/src/lib/api/`. Un WebSocket authentifié par ticket signale uniquement qu’une ressource a changé, puis le frontend la relit via REST. Le bouton de rafraîchissement et la resynchronisation au retour dans l’onglet sont conservés ; un fallback à 25 secondes ne tourne que lorsque le socket est indisponible.
 - **Réseau** : le navigateur appelle `/api` sur son propre domaine. La passerelle SvelteKit relaie vers `backend` sur le réseau privé Compose. Le frontend est accessible sur le réseau de développement ; PostgreSQL publie uniquement un port local sur `127.0.0.1` pour les explorateurs de base de données. L’API Go ne publie pas de port sur l’hôte.
 - **Persistance** : migrations SQL versionnées, seed idempotent et volume PostgreSQL. Les conteneurs API et frontend tournent avec des utilisateurs sans privilèges.
@@ -62,6 +63,7 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 ├── backend/
 │   ├── cmd/api/main.go          # Serveur et commandes migrate / seed
 │   ├── internal/
+│   │   ├── ai/                  # Provider Responses, prompts et validation du catalogue
 │   │   ├── database/            # Pool, exécution des migrations et du seed
 │   │   ├── handlers/            # Composition HTTP + routes boxes/games/players/realtime
 │   │   ├── realtime/            # Tickets courts, hub par partie et clients WebSocket
@@ -89,6 +91,7 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── migrations/001_initial.{up,down}.sql
 │   ├── migrations/002_game_modes.{up,down}.sql
 │   ├── migrations/003_game_events.{up,down}.sql
+│   ├── migrations/004_ai_missions.{up,down}.sql
 │   └── seed.sql
 ├── firmware/
 │   ├── platformio.ini
@@ -121,6 +124,8 @@ Le lobby, le jeu, le classement et la fin partagent `/box/[boxId]` : le même li
 | `FRONTEND_URL` | `http://localhost:3000` | Origine publique pour SvelteKit et CORS de Go |
 | `PUBLIC_API_URL` | `/api` | Base d’URL pour le navigateur, configurée au démarrage |
 | `API_INTERNAL_URL` | `http://backend:8080` | Backend joint par le serveur SvelteKit |
+| `OPENAI_API_KEY` | vide | Clé backend optionnelle, jamais exposée au navigateur |
+| `OPENAI_MODEL` | vide | Modèle compatible Responses API et Structured Outputs ; obligatoire avec la clé |
 | `DOMAIN` | `partybox.example.com` | Domaine du profil Caddy |
 | `ACME_EMAIL` | `you@example.com` | Contact pour les certificats HTTPS |
 
@@ -162,7 +167,7 @@ docker compose run --rm seed
 
 Le seed insère `PB001`, 18 missions secrètes et 15 défis de chasse au trésor avec points, catégorie et difficulté (1 à 3), sans dupliquer les lignes ni remplacer les données existantes. Les missions déjà jouées sont évitées tant qu’il reste des missions inédites dans le mode choisi ; après épuisement du catalogue, la moins récemment attribuée revient.
 
-Le fichier `.down.sql` est fourni pour un retour arrière manuel. Le binaire n’exécute pas de rollback automatique. Un rollback du schéma initial supprime les parties et leurs données : arrêter les services applicatifs et sauvegarder la base avant toute intervention de ce type.
+Le fichier `.down.sql` est fourni pour un retour arrière manuel. Le binaire n’exécute pas de rollback automatique. Le rollback de `004_ai_missions` supprime les catalogues IA et leurs attributions, car l’ancien schéma ne peut pas représenter des missions propres à une partie. Un rollback du schéma initial supprime les parties et leurs données : arrêter les services applicatifs et sauvegarder la base avant toute intervention de ce type.
 
 Pour des migrations ou un seed modifiés dans le dépôt, reconstruire d’abord l’image avec `docker compose build backend migrate seed`, car les fichiers SQL y sont embarqués.
 
@@ -223,6 +228,8 @@ Toutes les réponses applicatives sont JSON. Les routes privées exigent `Author
 | `GET /api/players/me/mission` | Joueur | `{ "mission": ... }` ou `null` avant démarrage |
 | `POST /api/players/me/mission/complete` | Joueur | `{ "assignment_id": "<UUID de l’attribution>" }` |
 | `GET /api/games/:gameId/leaderboard` | Joueur de la partie | `{ "players": [...] }`, par score décroissant |
+| `GET /api/games/:gameId/ai-missions/status` | Joueur de la partie | Disponibilité, taille du catalogue et générations restantes |
+| `POST /api/games/:gameId/ai-missions/generate` | Hôte dans le lobby | Ambiance, intensité, contexte et nombre ; retourne uniquement le total généré |
 | `POST /api/boxes/:boxId/events` | Contrat réservé | `{ "type": "button_press" }` → **501 Not Implemented**, aucun effet |
 
 Création et entrée renvoient `201` avec `{ token, player, game }`. Une validation renvoie `{ awarded_points, already_completed, player, mission }`. Le champ `mission.id` est l’identifiant de **l’attribution**, tandis que `mission.mission_id` identifie la mission du catalogue.
@@ -247,7 +254,15 @@ La migration `003_game_events` ajoute la table interne `game_events` : UUID, par
 
 Ce journal PostgreSQL est distinct des notifications WebSocket : `models.GameEvent` conserve un historique pour le debug, l’analytics et de futurs traitements, tandis que `realtime.Event` reste un signal éphémère demandant au navigateur de relire REST. Aucune API publique n’expose actuellement `game_events`.
 
-Les mutations existantes enregistrent `player_joined`, `game_started`, `mission_completed` et `game_ended`. La validation stocke aussi `assignment_id` et `points` dans son payload. Chaque événement est écrit dans la même transaction que l’arrivée, le changement de statut ou la validation correspondante ; un retry réussi mais déjà traité ne crée donc pas de doublon. La constante générique `mission_assigned` est réservée, mais cet événement n’est pas encore écrit afin de ne pas complexifier le mécanisme d’attribution actuel.
+Les mutations existantes enregistrent `player_joined`, `game_started`, `mission_completed`, `game_ended` et `ai_missions_generated`. La validation stocke aussi `assignment_id` et `points` dans son payload. Chaque événement est écrit dans la même transaction que l’arrivée, le changement de statut ou la validation correspondante ; un retry réussi mais déjà traité ne crée donc pas de doublon. L’événement IA conserve uniquement le nombre, le mode, l’ambiance et l’intensité : aucune clé, réponse brute ou contexte libre. La constante générique `mission_assigned` est réservée, mais cet événement n’est pas encore écrit afin de ne pas complexifier le mécanisme d’attribution actuel.
+
+### Génération de missions par IA
+
+Dans le lobby, l’hôte peut générer un catalogue propre à sa partie pour `secret_missions` ou `treasure_hunt`. Le backend dérive le mode et le nombre de joueurs, limite le contexte libre à 300 caractères, appelle uniquement l’API OpenAI Responses avec Structured Outputs et demande explicitement `store=false`. La réponse est bornée et validée en Go avant toute écriture.
+
+Une partie utilise exclusivement son catalogue IA lorsqu’il existe ; sinon elle garde les missions seed du même mode. Une régénération remplace l’ancien catalogue dans une transaction, avec l’événement métier correspondant. L’ancien catalogue reste intact si le fournisseur ou la validation échoue.
+
+Une seule génération peut être active par partie et les transitions Start/End sont refusées pendant l’appel. Chaque partie dispose de cinq tentatives de génération par processus backend ; les générations réussies sont également comptées dans `game_events`, ce qui conserve la limite après un redémarrage. Les missions et attributions existantes restent utilisables une fois la limite atteinte.
 
 ### Identité et cohérence
 
@@ -289,7 +304,7 @@ Ouvrir `http://localhost:5173/box/PB001`. Pour utiliser PostgreSQL depuis Compos
 
 ### Vérifications et tests
 
-Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket pour l’autorisation, le refus inter-partie, la diffusion à plusieurs clients d’une même partie, l’isolation entre parties et la déconnexion propre. Les tests d’intégration PostgreSQL utilisent un schéma isolé et couvrent les deux modes, les migrations sur base vierge et `001 + 002 → 003`, ainsi que les quatre événements métier persistés et leur idempotence.
+Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket pour l’autorisation, le refus inter-partie, la diffusion à plusieurs clients d’une même partie, l’isolation entre parties et la déconnexion propre. Les tests d’intégration PostgreSQL utilisent un schéma isolé et couvrent les deux modes, les migrations sur base vierge et existante, le rollback IA avec une mission attribuée, les événements métier, l’isolation et la priorité des catalogues IA, leur remplacement atomique, la limite d’utilisation et la concurrence avec Start. OpenAI est toujours simulé dans les tests.
 
 ```sh
 cd backend

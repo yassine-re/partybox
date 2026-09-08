@@ -66,3 +66,16 @@ func (t *Transaction) AddScore(ctx context.Context, playerID string, points int)
 	_, err := t.tx.Exec(ctx, `UPDATE players SET score=score+$1 WHERE id=$2`, points, playerID)
 	return err
 }
+
+func (t *Transaction) ReplaceAIMissions(ctx context.Context, gameID string, mode models.GameMode, missions []models.MissionInput) error {
+	if _, err := t.tx.Exec(ctx, `DELETE FROM missions WHERE game_id=$1 AND source='ai'`, gameID); err != nil {
+		return err
+	}
+	for _, m := range missions {
+		if _, err := t.tx.Exec(ctx, `INSERT INTO missions(text,points,category,difficulty,mode,source,game_id)
+			VALUES($1,$2,$3,$4,$5,'ai',$6)`, m.Text, m.Points, m.Category, m.Difficulty, mode, gameID); err != nil {
+			return err
+		}
+	}
+	return nil
+}

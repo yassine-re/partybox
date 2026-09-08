@@ -145,13 +145,23 @@ func insertPlayer(ctx context.Context, q querier, gameID, name, hash string, hos
 }
 
 // Prefer unseen missions, then the least recently played; never repeat immediately
-// when the mode's catalog contains another choice. Random breaks ties in this small catalog.
+// when the catalog contains another choice. Prioritizes the game's custom AI catalog
+// if present, otherwise seamlessly falls back to seed missions for the same game mode.
 func assign(ctx context.Context, q querier, playerID string) error {
 	var id int
-	err := q.QueryRow(ctx, `SELECT m.id FROM missions m
-		LEFT JOIN player_missions pm ON pm.mission_id=m.id AND pm.player_id=$1
-		WHERE m.mode = (SELECT g.mode FROM players p JOIN games g ON g.id=p.game_id WHERE p.id=$1)
-		GROUP BY m.id ORDER BY max(pm.assigned_at) ASC NULLS FIRST, random() LIMIT 1`, playerID).Scan(&id)
+	err := q.QueryRow(ctx, `WITH game_info AS (
+		SELECT g.id AS game_id, g.mode,
+		       EXISTS (SELECT 1 FROM missions WHERE game_id = g.id AND source = 'ai') AS has_ai
+		FROM players p
+		JOIN games g ON g.id = p.game_id
+		WHERE p.id = $1
+	)
+	SELECT m.id FROM missions m
+	CROSS JOIN game_info gi
+	LEFT JOIN player_missions pm ON pm.mission_id = m.id AND pm.player_id = $1
+	WHERE m.mode = gi.mode
+	  AND (CASE WHEN gi.has_ai THEN (m.source = 'ai' AND m.game_id = gi.game_id) ELSE (m.source = 'seed' AND m.game_id IS NULL) END)
+	GROUP BY m.id ORDER BY max(pm.assigned_at) ASC NULLS FIRST, random() LIMIT 1`, playerID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w : aucune mission disponible, lancer le seed", models.ErrConflict)
 	}
@@ -175,4 +185,16 @@ func currentMission(ctx context.Context, q querier, playerID string) (*models.Mi
 
 func (r *Repository) Mission(ctx context.Context, p models.Player) (*models.Mission, error) {
 	return currentMission(ctx, r.Pool, p.ID)
+}
+
+func (r *Repository) AIMissionsCount(ctx context.Context, gameID string) (int, error) {
+	var count int
+	err := r.Pool.QueryRow(ctx, `SELECT count(*) FROM missions WHERE game_id=$1 AND source='ai'`, gameID).Scan(&count)
+	return count, normalize(err)
+}
+
+func (r *Repository) AIMissionGenerationCount(ctx context.Context, gameID string) (int, error) {
+	var count int
+	err := r.Pool.QueryRow(ctx, `SELECT count(*) FROM game_events WHERE game_id=$1 AND type=$2`, gameID, models.GameEventAIMissionsGenerated).Scan(&count)
+	return count, normalize(err)
 }
