@@ -40,4 +40,22 @@ INSERT INTO missions(id, text, points, category, difficulty, mode) VALUES
 (115, 'Trouve un objet et invente-lui une publicité de dix secondes.', 20, 'funny', 3, 'treasure_hunt')
 ON CONFLICT (id) DO NOTHING;
 
+INSERT INTO missions(id, text, points, category, difficulty, mode) VALUES
+(201, 'Fais faire un high-five à trois personnes.', 15, 'interaction', 2, 'chaos'),
+(202, 'Change de place avec quelqu’un sans expliquer pourquoi.', 10, 'improvisation', 1, 'chaos'),
+(203, 'Fais applaudir au moins deux personnes.', 15, 'collective', 2, 'chaos'),
+(204, 'Convaincs quelqu’un de dire « on est mal ».', 15, 'conversation', 2, 'chaos'),
+(205, 'Fais une pose dramatique avec un autre joueur.', 15, 'creative', 2, 'chaos'),
+(206, 'Trouve un objet amusant et garde-le avec toi pendant une mission.', 10, 'object', 1, 'chaos'),
+(207, 'Lance un faux débat bienveillant sur un sujet complètement inutile.', 20, 'conversation', 3, 'chaos'),
+(208, 'Obtiens une photo avec deux autres joueurs, avec leur accord.', 20, 'collective', 3, 'chaos'),
+(209, 'Fais choisir un nombre entre 1 et 10 à quelqu’un.', 10, 'interaction', 1, 'chaos'),
+(210, 'Fais dire le prénom d’un autre joueur à deux personnes.', 15, 'conversation', 2, 'chaos'),
+(211, 'Invente un mini salut secret avec un autre joueur.', 15, 'creative', 2, 'chaos'),
+(212, 'Fais marcher deux personnes au ralenti pendant cinq secondes.', 20, 'collective', 3, 'chaos'),
+(213, 'Obtiens une recommandation de film en moins de trente secondes.', 10, 'conversation', 1, 'chaos'),
+(214, 'Fais imiter un bruit d’animal à quelqu’un.', 15, 'improvisation', 2, 'chaos'),
+(215, 'Fais former un cercle à trois personnes pour une raison inventée.', 20, 'collective', 3, 'chaos')
+ON CONFLICT (id) DO NOTHING;
+
 SELECT setval(pg_get_serial_sequence('missions', 'id'), (SELECT max(id) FROM missions));
