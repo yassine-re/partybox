@@ -1,5 +1,7 @@
 import { env } from "$env/dynamic/public";
 import type {
+  AIGenerationOptions,
+  AIStatus,
   Box,
   Completion,
   Game,
@@ -22,6 +24,7 @@ async function request<T>(
   path: string,
   token?: string,
   body?: unknown,
+  timeoutMs = 12_000,
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -34,7 +37,7 @@ async function request<T>(
         method: body === undefined ? "GET" : "POST",
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
   } catch {
@@ -79,4 +82,17 @@ export const api = {
     request<Completion>("/players/me/mission/complete", token, {
       assignment_id,
     }),
+  aiGenerateMissions: (
+    id: string,
+    token: string,
+    options: AIGenerationOptions,
+  ) =>
+    request<{ generated: number }>(
+      `/games/${id}/ai-missions/generate`,
+      token,
+      options,
+      50_000,
+    ),
+  aiMissionsStatus: (id: string, token: string) =>
+    request<AIStatus>(`/games/${id}/ai-missions/status`, token),
 };

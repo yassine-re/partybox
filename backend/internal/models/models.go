@@ -49,6 +49,13 @@ type Mission struct {
 	Difficulty int    `json:"difficulty"`
 }
 
+type MissionInput struct {
+	Text       string `json:"text"`
+	Points     int    `json:"points"`
+	Category   string `json:"category"`
+	Difficulty int    `json:"difficulty"`
+}
+
 type Session struct {
 	Token  string `json:"token"`
 	Player Player `json:"player"`

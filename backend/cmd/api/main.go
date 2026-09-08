@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"partybox/backend/internal/ai"
 	"partybox/backend/internal/database"
 	"partybox/backend/internal/handlers"
 	"partybox/backend/internal/realtime"
@@ -51,7 +53,18 @@ func run() error {
 			return errors.New("usage: api [migrate|seed]")
 		}
 	}
-	s := &services.Service{Repo: &repositories.Repository{Pool: pool}}
+	var generator ai.MissionGenerator
+	key := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	model := strings.TrimSpace(os.Getenv("OPENAI_MODEL"))
+	if key != "" && model != "" {
+		generator = ai.NewOpenAIResponsesGenerator(key, model, os.Getenv("OPENAI_BASE_URL"))
+	} else if key != "" {
+		slog.Warn("AI mission generation disabled: OPENAI_MODEL is not configured")
+	}
+	s := &services.Service{
+		Repo: &repositories.Repository{Pool: pool},
+		AI:   generator,
+	}
 	frontendURL := env("FRONTEND_URL", "http://localhost:3000")
 	realtimeServer := realtime.NewServer(frontendURL, s.AuthorizeRealtime)
 	defer realtimeServer.Close()

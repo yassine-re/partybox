@@ -9,6 +9,8 @@ x-backend: &backend
     DATABASE_URL: ${DATABASE_URL:-postgres://partybox:partybox_dev_only@postgres:5432/partybox?sslmode=disable}
     BACKEND_PORT: ${BACKEND_PORT:-8080}
     FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    OPENAI_MODEL: ${OPENAI_MODEL:-}
 
 services:
   postgres:

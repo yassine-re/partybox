@@ -8,11 +8,12 @@ import (
 type GameEventType string
 
 const (
-	GameEventPlayerJoined     GameEventType = "player_joined"
-	GameEventGameStarted      GameEventType = "game_started"
-	GameEventMissionAssigned  GameEventType = "mission_assigned"
-	GameEventMissionCompleted GameEventType = "mission_completed"
-	GameEventGameEnded        GameEventType = "game_ended"
+	GameEventPlayerJoined        GameEventType = "player_joined"
+	GameEventGameStarted         GameEventType = "game_started"
+	GameEventMissionAssigned     GameEventType = "mission_assigned"
+	GameEventMissionCompleted    GameEventType = "mission_completed"
+	GameEventGameEnded           GameEventType = "game_ended"
+	GameEventAIMissionsGenerated GameEventType = "ai_missions_generated"
 )
 
 // GameEvent is persisted for history and analytics. It is distinct from the
