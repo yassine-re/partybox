@@ -69,6 +69,7 @@ func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.E
 	h.registerGameRoutes(public, auth)
 	h.registerPlayerRoutes(auth)
 	h.registerRealtimeRoutes(public, auth)
+	h.registerChaosRoutes(auth)
 	h.registerAIRoutes(auth)
 	r.NoRoute(func(c *gin.Context) { respond(c, nil, models.ErrNotFound, 0) })
 	return r

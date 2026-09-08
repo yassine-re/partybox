@@ -3,6 +3,7 @@ import type {
   AIGenerationOptions,
   AIStatus,
   Box,
+  ChaosState,
   Completion,
   Game,
   GameMode,
@@ -67,6 +68,8 @@ export const api = {
     request<Session>(`/games/${id}/join`, undefined, { name }),
   me: (token: string) => request<Player>("/players/me", token),
   game: (id: string, token: string) => request<Game>(`/games/${id}`, token),
+  chaos: (id: string, token: string) =>
+    request<ChaosState>(`/games/${id}/chaos`, token),
   mission: (token: string) =>
     request<{ mission: Mission | null }>("/players/me/mission", token),
   start: (id: string, token: string) =>

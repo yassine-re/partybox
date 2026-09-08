@@ -1,6 +1,6 @@
 # PartyBox
 
-PartyBox transforme une soirée IRL en jeu de missions secrètes ou de chasse au trésor. Un tag NFC passif dans le boîtier ouvre une URL comme `https://partybox.example.com/box/PB001`. Chaque joueur utilise son téléphone ; Go et PostgreSQL centralisent les parties, missions, scores et événements métier sur un serveur.
+PartyBox transforme une soirée IRL en jeu de missions secrètes, de chasse au trésor ou en partie Chaos aux règles dynamiques. Un tag NFC passif dans le boîtier ouvre une URL comme `https://partybox.example.com/box/PB001`. Chaque joueur utilise son téléphone ; Go et PostgreSQL centralisent les parties, missions, scores et événements métier sur un serveur.
 
 Ce dépôt contient le premier MVP logiciel : création de partie, lobby partagé, démarrage par l’hôte, missions privées, validation virtuelle, points, nouvelle mission et classement final. Le firmware et le machine learning ont uniquement leur emplacement préparé.
 
@@ -17,7 +17,7 @@ docker compose up --build
 
 Ouvrir **[http://localhost:3000/box/PB001](http://localhost:3000/box/PB001)**.
 
-Compose attend PostgreSQL, applique les migrations, exécute le seed idempotent, puis démarre l’API et le frontend. La box `PB001`, **18 missions secrètes** et **15 défis de chasse au trésor** sont créés automatiquement. Aucune partie ni joueur de démonstration n’est créé. La génération IA reste optionnelle et désactivée tant que `OPENAI_API_KEY` et `OPENAI_MODEL` ne sont pas renseignés.
+Compose attend PostgreSQL, applique les migrations, exécute le seed idempotent, puis démarre l’API et le frontend. La box `PB001`, **18 missions secrètes**, **15 défis de chasse au trésor** et **15 missions Chaos** sont créés automatiquement. Aucune partie ni joueur de démonstration n’est créé. La génération IA reste optionnelle et désactivée tant que `OPENAI_API_KEY` et `OPENAI_MODEL` ne sont pas renseignés.
 
 Pour lancer en arrière-plan, suivre les logs ou arrêter :
 
@@ -66,6 +66,7 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   │   ├── ai/                  # Provider Responses, prompts et validation du catalogue
 │   │   ├── database/            # Pool, exécution des migrations et du seed
 │   │   ├── handlers/            # Composition HTTP + routes boxes/games/players/realtime
+│   │   ├── chaos/               # Moteur, événements et état du mode Chaos
 │   │   ├── realtime/            # Tickets courts, hub par partie et clients WebSocket
 │   │   ├── services/            # Identités et cycle de vie d’une partie
 │   │   ├── repositories/        # SQL, transactions et journal d’événements
@@ -77,7 +78,7 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── src/lib/api/             # Client fetch, types et sessions locales
 │   ├── src/lib/realtime/        # Connexion, backoff et notifications entrantes
 │   ├── src/lib/components/      # Orchestration de l’expérience et composants partagés
-│   │   └── game/                # En-tête, lobby, jeu et résultats finaux
+│   │   └── game/                # En-tête, lobby, jeu, bannière Chaos et résultats
 │   ├── src/routes/
 │   │   ├── +page.svelte         # Accueil et saisie d’un code box
 │   │   ├── box/[boxId]/         # Entrée → lobby → jeu → fin
@@ -92,6 +93,7 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── migrations/002_game_modes.{up,down}.sql
 │   ├── migrations/003_game_events.{up,down}.sql
 │   ├── migrations/004_ai_missions.{up,down}.sql
+│   ├── migrations/005_chaos_mode.{up,down}.sql
 │   └── seed.sql
 ├── firmware/
 │   ├── platformio.ini
@@ -111,23 +113,23 @@ Le lobby, le jeu, le classement et la fin partagent `/box/[boxId]` : le même li
 
 `.env` est ignoré par Git. Les valeurs livrées sont uniquement destinées au développement. Ne jamais mettre un secret dans une variable `PUBLIC_*`, car elle est accessible au navigateur.
 
-| Variable | Valeur de développement | Rôle |
-| --- | --- | --- |
-| `DATABASE_URL` | `postgres://partybox:partybox_dev_only@postgres:5432/partybox?sslmode=disable` | Connexion pgx depuis Docker |
-| `POSTGRES_DB` | `partybox` | Base créée au premier démarrage PostgreSQL |
-| `POSTGRES_USER` | `partybox` | Utilisateur PostgreSQL |
-| `POSTGRES_PORT` | `5432` | Port PostgreSQL publié uniquement sur `127.0.0.1` |
-| `POSTGRES_PASSWORD` | `partybox_dev_only` | Mot de passe de développement |
-| `BACKEND_PORT` | `8080` | Port interne Go |
-| `FRONTEND_PORT` | `3000` | Port du frontend publié sur l’hôte |
-| `FRONTEND_BIND` | `0.0.0.0` | Adresse d’écoute sur l’hôte ; utiliser `127.0.0.1` derrière Caddy en production |
-| `FRONTEND_URL` | `http://localhost:3000` | Origine publique pour SvelteKit et CORS de Go |
-| `PUBLIC_API_URL` | `/api` | Base d’URL pour le navigateur, configurée au démarrage |
-| `API_INTERNAL_URL` | `http://backend:8080` | Backend joint par le serveur SvelteKit |
-| `OPENAI_API_KEY` | vide | Clé backend optionnelle, jamais exposée au navigateur |
-| `OPENAI_MODEL` | vide | Modèle compatible Responses API et Structured Outputs ; obligatoire avec la clé |
-| `DOMAIN` | `partybox.example.com` | Domaine du profil Caddy |
-| `ACME_EMAIL` | `you@example.com` | Contact pour les certificats HTTPS |
+| Variable            | Valeur de développement                                                        | Rôle                                                                            |
+| ------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `DATABASE_URL`      | `postgres://partybox:partybox_dev_only@postgres:5432/partybox?sslmode=disable` | Connexion pgx depuis Docker                                                     |
+| `POSTGRES_DB`       | `partybox`                                                                     | Base créée au premier démarrage PostgreSQL                                      |
+| `POSTGRES_USER`     | `partybox`                                                                     | Utilisateur PostgreSQL                                                          |
+| `POSTGRES_PORT`     | `5432`                                                                         | Port PostgreSQL publié uniquement sur `127.0.0.1`                               |
+| `POSTGRES_PASSWORD` | `partybox_dev_only`                                                            | Mot de passe de développement                                                   |
+| `BACKEND_PORT`      | `8080`                                                                         | Port interne Go                                                                 |
+| `FRONTEND_PORT`     | `3000`                                                                         | Port du frontend publié sur l’hôte                                              |
+| `FRONTEND_BIND`     | `0.0.0.0`                                                                      | Adresse d’écoute sur l’hôte ; utiliser `127.0.0.1` derrière Caddy en production |
+| `FRONTEND_URL`      | `http://localhost:3000`                                                        | Origine publique pour SvelteKit et CORS de Go                                   |
+| `PUBLIC_API_URL`    | `/api`                                                                         | Base d’URL pour le navigateur, configurée au démarrage                          |
+| `API_INTERNAL_URL`  | `http://backend:8080`                                                          | Backend joint par le serveur SvelteKit                                          |
+| `OPENAI_API_KEY`    | vide                                                                           | Clé backend optionnelle, jamais exposée au navigateur                           |
+| `OPENAI_MODEL`      | vide                                                                           | Modèle compatible Responses API et Structured Outputs ; obligatoire avec la clé |
+| `DOMAIN`            | `partybox.example.com`                                                         | Domaine du profil Caddy                                                         |
+| `ACME_EMAIL`        | `you@example.com`                                                              | Contact pour les certificats HTTPS                                              |
 
 Maintenir `DATABASE_URL` cohérent avec les trois variables PostgreSQL. Si le mot de passe contient des caractères réservés aux URL, les encoder dans `DATABASE_URL`. Maintenir également `API_INTERNAL_URL` cohérent avec `BACKEND_PORT` et `FRONTEND_URL` avec l’URL utilisée par les joueurs.
 
@@ -139,16 +141,16 @@ Le binaire Go accepte également `MIGRATIONS_DIR` et `SEED_FILE`, configurées d
 
 PostgreSQL est accessible depuis un explorateur installé sur le même ordinateur (DBeaver, DataGrip, TablePlus ou extension d’éditeur) avec ces paramètres :
 
-| Paramètre | Valeur |
-| --- | --- |
-| Type de connexion | PostgreSQL |
-| Hôte | `127.0.0.1` |
-| Port | `5432` (ou `POSTGRES_PORT` dans `.env`) |
-| Base | `partybox` (ou `POSTGRES_DB`) |
-| Utilisateur | `partybox` (ou `POSTGRES_USER`) |
-| Mot de passe | La valeur de `POSTGRES_PASSWORD` dans `.env` |
-| SSL | Désactivé pour cette connexion locale |
-| Schéma | `public` |
+| Paramètre         | Valeur                                       |
+| ----------------- | -------------------------------------------- |
+| Type de connexion | PostgreSQL                                   |
+| Hôte              | `127.0.0.1`                                  |
+| Port              | `5432` (ou `POSTGRES_PORT` dans `.env`)      |
+| Base              | `partybox` (ou `POSTGRES_DB`)                |
+| Utilisateur       | `partybox` (ou `POSTGRES_USER`)              |
+| Mot de passe      | La valeur de `POSTGRES_PASSWORD` dans `.env` |
+| SSL               | Désactivé pour cette connexion locale        |
+| Schéma            | `public`                                     |
 
 Le nom d’hôte `postgres` de `DATABASE_URL` est réservé au réseau Docker. Depuis un explorateur local, utiliser `127.0.0.1`, sans URL zrok ni préfixe HTTP. La publication du port est limitée à la boucle locale : elle n’expose pas la base sur le Wi-Fi ou Internet.
 
@@ -165,7 +167,9 @@ docker compose run --rm seed
 
 `migrate` applique les fichiers `*.up.sql` par ordre lexical et inscrit leurs versions dans `schema_migrations`. Les migrations et le suivi des versions partagent une transaction ; un verrou évite deux exécutions simultanées. Ajouter une nouvelle migration numérotée plutôt que modifier une migration déjà appliquée.
 
-Le seed insère `PB001`, 18 missions secrètes et 15 défis de chasse au trésor avec points, catégorie et difficulté (1 à 3), sans dupliquer les lignes ni remplacer les données existantes. Les missions déjà jouées sont évitées tant qu’il reste des missions inédites dans le mode choisi ; après épuisement du catalogue, la moins récemment attribuée revient.
+Le seed insère `PB001`, 18 missions secrètes, 15 défis de chasse au trésor et 15 missions Chaos avec points, catégorie et difficulté (1 à 3), sans dupliquer les lignes ni remplacer les données existantes. Les missions déjà jouées sont évitées tant qu’il reste des missions inédites dans le mode choisi ; après épuisement du catalogue, la moins récemment attribuée revient.
+
+Les migrations `004_ai_missions` et `005_chaos_mode` restent séparées afin que les catalogues IA et l’état Chaos puissent évoluer indépendamment.
 
 Le fichier `.down.sql` est fourni pour un retour arrière manuel. Le binaire n’exécute pas de rollback automatique. Le rollback de `004_ai_missions` supprime les catalogues IA et leurs attributions, car l’ancien schéma ne peut pas représenter des missions propres à une partie. Un rollback du schéma initial supprime les parties et leurs données : arrêter les services applicatifs et sauvegarder la base avant toute intervention de ce type.
 
@@ -184,6 +188,8 @@ Ce parcours sert de vérification manuelle sur deux profils ou appareils distinc
 7. Recharger la page : le token local restaure le même joueur, sa mission et son score.
 8. L’hôte termine la partie via le bouton dédié et sa confirmation. Les deux écrans affichent le classement final et le nombre de missions accomplies.
 9. **Revenir à l’accueil de la box** libère la session locale de cette partie et permet d’en créer ou rejoindre une nouvelle ; le pseudo reste mémorisé.
+
+En mode Chaos, un événement est sélectionné après trois validations globales. `DOUBLE TROUBLE` double les trois validations suivantes, `BOUNTY` ajoute 100 points à la prochaine validation d’une cible choisie côté serveur, et `MISSION SHUFFLE` annule les missions courantes avant d’en attribuer de nouvelles à tout le monde.
 
 Pour utiliser des téléphones : être sur le même Wi-Fi, définir `FRONTEND_URL=http://<IP_LAN_DU_PC>:3000`, garder `PUBLIC_API_URL=/api`, puis ouvrir `http://<IP_LAN_DU_PC>:3000/box/PB001`. Utiliser cette adresse sur tous les appareils ; `localhost` désigne le téléphone lui-même. Le port 3000 doit être autorisé par le pare-feu local. Le bouton de copie affiche le lien en texte si le presse-papiers est indisponible en HTTP.
 
@@ -213,24 +219,25 @@ Un simple `docker compose restart` ne recharge pas les variables d’environneme
 
 Toutes les réponses applicatives sont JSON. Les routes privées exigent `Authorization: Bearer <token>`. Les tokens ne sont jamais inclus dans le lobby, le classement ou les informations de box.
 
-| Méthode / route | Accès | Corps ou résultat principal |
-| --- | --- | --- |
-| `GET /api/health` | Public | État de l’API et connexion à PostgreSQL |
-| `GET /api/boxes/:boxId` | Public | Box et `active_game` ou `null` |
-| `POST /api/boxes/:boxId/games` | Public | `{ "name": "La soirée", "player_name": "Alice", "mode": "secret_missions" }` → session hôte |
-| `POST /api/games/:gameId/join` | Public | `{ "name": "Bob" }` → session joueur |
-| `GET /api/games/:gameId` | Joueur de la partie | Statut, dates et joueurs avec scores |
-| `POST /api/games/:gameId/start` | Hôte | `{}` ; au moins deux joueurs |
-| `POST /api/games/:gameId/end` | Hôte | `{}` ; fige les scores, peut aussi fermer un lobby |
-| `POST /api/games/:gameId/ws-ticket` | Joueur de la partie | Ticket opaque à usage unique, valable 30 secondes |
-| `GET /api/games/:gameId/ws?ticket=…` | Ticket court | Connexion WebSocket limitée à la partie du joueur |
-| `GET /api/players/me` | Joueur | Identité, score, nombre de missions accomplies |
-| `GET /api/players/me/mission` | Joueur | `{ "mission": ... }` ou `null` avant démarrage |
-| `POST /api/players/me/mission/complete` | Joueur | `{ "assignment_id": "<UUID de l’attribution>" }` |
-| `GET /api/games/:gameId/leaderboard` | Joueur de la partie | `{ "players": [...] }`, par score décroissant |
-| `GET /api/games/:gameId/ai-missions/status` | Joueur de la partie | Disponibilité, taille du catalogue et générations restantes |
-| `POST /api/games/:gameId/ai-missions/generate` | Hôte dans le lobby | Ambiance, intensité, contexte et nombre ; retourne uniquement le total généré |
-| `POST /api/boxes/:boxId/events` | Contrat réservé | `{ "type": "button_press" }` → **501 Not Implemented**, aucun effet |
+| Méthode / route                         | Accès                     | Corps ou résultat principal                                                                 |
+| --------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------- |
+| `GET /api/health`                       | Public                    | État de l’API et connexion à PostgreSQL                                                     |
+| `GET /api/boxes/:boxId`                 | Public                    | Box et `active_game` ou `null`                                                              |
+| `POST /api/boxes/:boxId/games`          | Public                    | `{ "name": "La soirée", "player_name": "Alice", "mode": "secret_missions" }` → session hôte |
+| `POST /api/games/:gameId/join`          | Public                    | `{ "name": "Bob" }` → session joueur                                                        |
+| `GET /api/games/:gameId`                | Joueur de la partie       | Statut, dates et joueurs avec scores                                                        |
+| `GET /api/games/:gameId/chaos`          | Joueur d’une partie Chaos | Événement actif, progression et séquence                                                    |
+| `POST /api/games/:gameId/start`         | Hôte                      | `{}` ; au moins deux joueurs                                                                |
+| `POST /api/games/:gameId/end`           | Hôte                      | `{}` ; fige les scores, peut aussi fermer un lobby                                          |
+| `POST /api/games/:gameId/ws-ticket`     | Joueur de la partie       | Ticket opaque à usage unique, valable 30 secondes                                           |
+| `GET /api/games/:gameId/ws?ticket=…`    | Ticket court              | Connexion WebSocket limitée à la partie du joueur                                           |
+| `GET /api/players/me`                   | Joueur                    | Identité, score, nombre de missions accomplies                                              |
+| `GET /api/players/me/mission`           | Joueur                    | `{ "mission": ... }` ou `null` avant démarrage                                              |
+| `POST /api/players/me/mission/complete` | Joueur                    | `{ "assignment_id": "<UUID de l’attribution>" }`                                            |
+| `GET /api/games/:gameId/leaderboard`    | Joueur de la partie       | `{ "players": [...] }`, par score décroissant                                               |
+| `GET /api/games/:gameId/ai-missions/status` | Joueur de la partie | Disponibilité, taille du catalogue et générations restantes                                  |
+| `POST /api/games/:gameId/ai-missions/generate` | Hôte dans le lobby | Ambiance, intensité, contexte et nombre ; retourne uniquement le total généré                 |
+| `POST /api/boxes/:boxId/events`         | Contrat réservé           | `{ "type": "button_press" }` → **501 Not Implemented**, aucun effet                         |
 
 Création et entrée renvoient `201` avec `{ token, player, game }`. Une validation renvoie `{ awarded_points, already_completed, player, mission }`. Le champ `mission.id` est l’identifiant de **l’attribution**, tandis que `mission.mission_id` identifie la mission du catalogue.
 
@@ -254,7 +261,15 @@ La migration `003_game_events` ajoute la table interne `game_events` : UUID, par
 
 Ce journal PostgreSQL est distinct des notifications WebSocket : `models.GameEvent` conserve un historique pour le debug, l’analytics et de futurs traitements, tandis que `realtime.Event` reste un signal éphémère demandant au navigateur de relire REST. Aucune API publique n’expose actuellement `game_events`.
 
-Les mutations existantes enregistrent `player_joined`, `game_started`, `mission_completed`, `game_ended` et `ai_missions_generated`. La validation stocke aussi `assignment_id` et `points` dans son payload. Chaque événement est écrit dans la même transaction que l’arrivée, le changement de statut ou la validation correspondante ; un retry réussi mais déjà traité ne crée donc pas de doublon. L’événement IA conserve uniquement le nombre, le mode, l’ambiance et l’intensité : aucune clé, réponse brute ou contexte libre. La constante générique `mission_assigned` est réservée, mais cet événement n’est pas encore écrit afin de ne pas complexifier le mécanisme d’attribution actuel.
+Les mutations existantes enregistrent `player_joined`, `game_started`, `mission_completed`, `game_ended` et `ai_missions_generated`. Chaos ajoute `chaos_event_triggered`, `chaos_event_consumed` et `mission_cancelled`. La validation stocke `assignment_id` et le nombre réel de points accordés dans son payload. Chaque événement est écrit dans la même transaction que l’arrivée, le changement de statut, le score ou le changement de mission correspondant ; un retry déjà traité ne crée donc pas de doublon ni de consommation Chaos supplémentaire. L’événement IA conserve uniquement le nombre, le mode, l’ambiance et l’intensité : aucune clé, réponse brute ou contexte libre. La constante générique `mission_assigned` est réservée, mais cet événement n’est pas encore écrit afin de ne pas complexifier le mécanisme d’attribution actuel.
+
+### Moteur Chaos
+
+Chaque partie Chaos possède une ligne `chaos_states` en PostgreSQL. Elle conserve l’événement courant, sa cible éventuelle, ses utilisations restantes, le nombre de validations depuis le dernier déclenchement et un numéro de séquence. PostgreSQL reste ainsi la source de vérité, y compris après un redémarrage du backend.
+
+Le seuil de trois validations est centralisé dans le moteur. La sélection de l’événement et de la cible passe par une interface injectable : le runtime utilise une sélection aléatoire, tandis que les tests forcent chaque scénario. Un effet à plusieurs utilisations bloque tout événement incompatible jusqu’à sa consommation. Le score, l’état Chaos, les assignments et le journal métier sont validés ensemble dans une transaction.
+
+`MISSION SHUFFLE` fait passer chaque assignment courant à `cancelled`, puis recrée exactement une mission `assigned` par joueur. Le nombre de missions accomplies ne compte que le statut `completed`. Aucun timer, scheduler, état Chaos côté navigateur ou nouveau payload WebSocket n’est utilisé.
 
 ### Génération de missions par IA
 
@@ -304,7 +319,7 @@ Ouvrir `http://localhost:5173/box/PB001`. Pour utiliser PostgreSQL depuis Compos
 
 ### Vérifications et tests
 
-Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket pour l’autorisation, le refus inter-partie, la diffusion à plusieurs clients d’une même partie, l’isolation entre parties et la déconnexion propre. Les tests d’intégration PostgreSQL utilisent un schéma isolé et couvrent les deux modes, les migrations sur base vierge et existante, le rollback IA avec une mission attribuée, les événements métier, l’isolation et la priorité des catalogues IA, leur remplacement atomique, la limite d’utilisation et la concurrence avec Start. OpenAI est toujours simulé dans les tests.
+Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket pour l’autorisation, le refus inter-partie, la diffusion à plusieurs clients d’une même partie, l’isolation entre parties et la déconnexion propre. Les tests d’intégration PostgreSQL utilisent un schéma isolé et couvrent les trois modes, les migrations sur base vierge et existante, les migrations `004` et `005`, le rollback IA avec une mission attribuée, les événements métier et l’idempotence. Ils vérifient également l’isolation et la priorité des catalogues IA, leur remplacement atomique, la limite d’utilisation et la concurrence avec Start. OpenAI est toujours simulé, et les scénarios Chaos forcent successivement Double Trouble, Bounty et Mission Shuffle.
 
 ```sh
 cd backend
@@ -317,7 +332,7 @@ npm run check
 npm run build
 ```
 
-Depuis la racine : `docker compose config --quiet` et `docker compose up --build`. Les healthchecks Compose vérifient la disponibilité des services. Les parcours création → arrivée d’un second joueur → démarrage → validation → classement → fin sont vérifiables pour `secret_missions` et `treasure_hunt`, avec les quatre notifications WebSocket associées.
+Depuis la racine : `docker compose config --quiet` et `docker compose up --build`. Les healthchecks Compose vérifient la disponibilité des services. Les parcours création → arrivée d’un second joueur → démarrage → validation → classement → fin sont vérifiables pour `secret_missions`, `treasure_hunt` et `chaos`, avec les quatre notifications WebSocket associées.
 
 ## VPS Linux et Caddy
 
@@ -341,6 +356,7 @@ La box `PB001` reste une référence de développement. Pour provisionner une au
 - La réussite d’une mission repose sur la déclaration du joueur. Pas de validation matérielle ni d’antitriche.
 - Pas de transfert d’hôte, de récupération de token perdu, de révocation, d’expiration automatique ou de nettoyage des anciennes parties. Si l’hôte perd son stockage local pendant une partie, une intervention en base sera nécessaire pour la fermer.
 - Pas de présence connectée/déconnectée : le lobby liste les inscrits. Pas de fonctionnement hors ligne ; une connexion au serveur est nécessaire.
+- Les événements Chaos sont déclenchés par le nombre de validations, sans timer. Ils ne comprennent pour l’instant que Double Trouble, Bounty et Mission Shuffle.
 - Pas encore de PWA installable, service worker, push, compte email/OAuth, upload, MQTT, Redis ou ML. La structure SvelteKit et les assets statiques permettent d’ajouter une PWA plus tard.
 - Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium ; deux téléphones physiques, le HTTPS public et le firmware n’ont pas été vérifiés sur du matériel réel.
 

@@ -68,7 +68,7 @@
           l’hôte lance la partie…
         </div>{/if}
     </section>
-    {#if me?.is_host && token}
+    {#if me?.is_host && token && game.mode !== "chaos"}
       <AIMissionPanel
         {game}
         {token}

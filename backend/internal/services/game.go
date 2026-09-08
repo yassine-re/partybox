@@ -13,16 +13,27 @@ import (
 	"unicode/utf8"
 
 	"partybox/backend/internal/ai"
+	"partybox/backend/internal/chaos"
 	"partybox/backend/internal/models"
 	"partybox/backend/internal/repositories"
 )
 
 type Service struct {
-	Repo *repositories.Repository
-	AI   ai.MissionGenerator
+	Repo  *repositories.Repository
+	AI    ai.MissionGenerator
+	Chaos *chaos.Engine
 
 	aiUsageMu sync.Mutex
 	aiUsage   map[string]aiGenerationUsage
+}
+
+var defaultChaosEngine = chaos.NewEngine(nil)
+
+func (s *Service) chaosEngine() *chaos.Engine {
+	if s.Chaos != nil {
+		return s.Chaos
+	}
+	return defaultChaosEngine
 }
 
 func cleanName(value string, max int) (string, error) {
