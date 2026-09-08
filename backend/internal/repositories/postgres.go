@@ -145,11 +145,12 @@ func insertPlayer(ctx context.Context, q querier, gameID, name, hash string, hos
 }
 
 // Prefer unseen missions, then the least recently played; never repeat immediately
-// when the catalog contains another choice. ORDER BY random() is fine for 18 rows.
+// when the mode's catalog contains another choice. Random breaks ties in this small catalog.
 func assign(ctx context.Context, q querier, playerID string) error {
 	var id int
 	err := q.QueryRow(ctx, `SELECT m.id FROM missions m
 		LEFT JOIN player_missions pm ON pm.mission_id=m.id AND pm.player_id=$1
+		WHERE m.mode = (SELECT g.mode FROM players p JOIN games g ON g.id=p.game_id WHERE p.id=$1)
 		GROUP BY m.id ORDER BY max(pm.assigned_at) ASC NULLS FIRST, random() LIMIT 1`, playerID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w : aucune mission disponible, lancer le seed", models.ErrConflict)

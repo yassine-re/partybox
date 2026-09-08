@@ -55,13 +55,15 @@ func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.E
 	})
 	r.POST("/api/boxes/:boxId/games", func(c *gin.Context) {
 		var body struct {
-			Name       string `json:"name"`
-			PlayerName string `json:"player_name"`
+			Name       string          `json:"name"`
+			PlayerName string          `json:"player_name"`
+			Mode       models.GameMode `json:"mode"`
 		}
+		body.Mode = models.ModeSecretMissions // Preserve clients that omit mode.
 		if !bind(c, &body) {
 			return
 		}
-		session, err := s.Create(c.Request.Context(), c.Param("boxId"), body.Name, body.PlayerName)
+		session, err := s.Create(c.Request.Context(), c.Param("boxId"), body.Name, body.PlayerName, body.Mode)
 		respond(c, session, err, http.StatusCreated)
 	})
 	r.POST("/api/games/:gameId/join", func(c *gin.Context) {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, ApiError } from "$lib/api";
+  import { DEFAULT_GAME_MODE, GAME_MODES } from "$lib/game-modes";
   import {
     clearSession,
     readNickname,
@@ -11,6 +12,7 @@
   import type {
     Box,
     Game,
+    GameMode,
     Mission,
     SavedSession,
     Session,
@@ -41,6 +43,7 @@
   let realtimeRefreshPending = false;
   let disposed = false;
   const players = $derived(game?.players ?? []);
+  const mode = $derived(GAME_MODES[game?.mode ?? DEFAULT_GAME_MODE]);
   const me = $derived(players.find((p) => p.id === playerId));
   const winners = $derived(
     players.filter((p) => p.score === players[0]?.score),
@@ -230,11 +233,11 @@
     startRealtime();
   }
 
-  function enter(name: string, gameName: string) {
+  function enter(name: string, gameName: string, selectedMode: GameMode) {
     void action(async () => {
       const result = box?.active_game
         ? await api.join(box.active_game.id, name)
-        : await api.create(boxId, gameName, name);
+        : await api.create(boxId, gameName, name, selectedMode);
       acceptSession(result);
     });
   }
@@ -247,8 +250,8 @@
       const result = await api.complete(token, assignmentId);
       mission = result.mission;
       notice = result.already_completed
-        ? "Cette mission était déjà validée. À toi la suivante !"
-        : `Mission accomplie ! +${result.awarded_points} points. Une nouvelle mission t’attend.`;
+        ? mode.alreadyCompletedMessage
+        : mode.completionMessage(result.awarded_points);
     });
   }
 
@@ -319,7 +322,7 @@
   <div class="game-heading">
     <div>
       <div class="eyebrow">
-        <a href="/">ACCUEIL</a><span>/</span> BOX {boxId}<span>/</span> SECRET MISSIONS
+        <a href="/">ACCUEIL</a><span>/</span> BOX {boxId}<span>/</span> {mode.label.toUpperCase()}
       </div>
       <h1>{game.name}<span class="accent">.</span></h1>
     </div>
@@ -336,11 +339,10 @@
     <div class="game-grid">
       <section class="lobby-feature">
         <span class="eyebrow">TOUT COMMENCE ICI</span>
-        <div class="lobby-star" aria-hidden="true">✳</div>
+        <div class="lobby-star" aria-hidden="true">{mode.symbol}</div>
         <h2>Réunis<br />ta bande<span class="accent">.</span></h2>
         <p>
-          Tout le monde est là ? Une fois la partie lancée, chacun reçoit sa
-          mission. Garde-la pour toi.
+          {mode.lobbyDescription}
         </p>
         <button class="button outline" onclick={share}
           >Copier le lien d’invitation <span aria-hidden="true">↗</span></button
@@ -355,16 +357,16 @@
         <PlayerList {players} me={playerId} />
         {#if me?.is_host}<button
             class="button primary"
-            disabled={busy || players.length < 2}
+            disabled={busy || players.length < mode.minPlayers}
             onclick={start}
             >{busy ? "Lancement…" : "Lancer la partie"}<span aria-hidden="true"
               >▶</span
             ></button
           >
           <p class="form-hint">
-            {players.length < 2
+            {players.length < mode.minPlayers
               ? "Encore un ami et la soirée peut commencer."
-              : "Ta mission sera attribuée au lancement."}
+              : mode.startHint}
           </p>{:else}<div class="waiting-notice">
             <span class="live-dot" aria-hidden="true"></span>En attendant que
             l’hôte lance la partie…
@@ -376,7 +378,7 @@
       <button
         class:active={tab === "mission"}
         aria-pressed={tab === "mission"}
-        onclick={() => (tab = "mission")}>Ma mission</button
+        onclick={() => (tab = "mission")}>{mode.tabLabel}</button
       ><button
         class:active={tab === "leaderboard"}
         aria-pressed={tab === "leaderboard"}
@@ -386,18 +388,19 @@
     <div class="game-grid play-grid">
       <div class:mobile-hidden={tab !== "mission"}>
         <div class="personal-stats">
-          <span>SALUT, <strong>{me?.name ?? "AGENT"}</strong></span><span
+          <span>SALUT, <strong>{me?.name ?? mode.playerLabel}</strong></span><span
             ><strong>{me?.score ?? 0}</strong> PTS
             <span class="stat-divider">/</span>
-            {me?.completed_missions ?? 0} MISSION(S)</span
+            {me?.completed_missions ?? 0} {mode.statsLabel}</span
           >
         </div>
         {#if mission}<MissionCard
             {mission}
+            mode={game.mode}
             {busy}
             oncomplete={complete}
           />{:else}<section class="panel">
-            <h2>Ta mission arrive…</h2>
+            <h2>{mode.loadingText}</h2>
             <button class="button outline" onclick={() => void sync()}
               >Actualiser</button
             >
@@ -419,7 +422,7 @@
               : "RECONNEXION…"}
           </span>
         </div>
-        <PlayerList {players} me={playerId} ranked />
+        <PlayerList {players} mode={game.mode} me={playerId} ranked />
         <p class="form-hint">
           {realtimeStatus === "connected"
             ? "Classement synchronisé en temps réel."
@@ -430,7 +433,7 @@
   {:else}
     <div class="final-layout">
       <section class="final-feature">
-        <div class="eyebrow">LES SECRETS SONT DÉVOILÉS</div>
+        <div class="eyebrow">{mode.finalEyebrow}</div>
         <span class="final-trophy" aria-hidden="true">✳</span>
         <h2>
           Bien joué,<br /><em>{winners.map((p) => p.name).join(" & ")}.</em>
@@ -439,7 +442,7 @@
           {winners.length > 1
             ? "La victoire se partage ce soir."
             : "La soirée a son champion."}
-          {players.reduce((sum, p) => sum + p.completed_missions, 0)} missions accomplies
+          {players.reduce((sum, p) => sum + p.completed_missions, 0)} {mode.completedPlural}
           ensemble.
         </p>
         <div class="final-score">
@@ -455,7 +458,7 @@
           <h2>Le dernier mot</h2>
           <span class="mini-label">CLASSEMENT FINAL</span>
         </div>
-        <PlayerList {players} me={playerId} ranked />
+        <PlayerList {players} me={playerId} mode={game.mode} ranked />
       </section>
     </div>
   {/if}

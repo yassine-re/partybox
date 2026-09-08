@@ -23,7 +23,7 @@ type Game struct {
 	ID        string     `json:"id"`
 	BoxID     string     `json:"box_id"`
 	Name      string     `json:"name"`
-	Mode      string     `json:"mode"`
+	Mode      GameMode   `json:"mode"`
 	Status    string     `json:"status"`
 	CreatedAt time.Time  `json:"created_at"`
 	StartedAt *time.Time `json:"started_at"`

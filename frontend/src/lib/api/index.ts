@@ -1,4 +1,5 @@
 import { env } from "$env/dynamic/public";
+<<<<<<< HEAD
 import type {
   Box,
   Completion,
@@ -7,6 +8,9 @@ import type {
   Player,
   Session,
 } from "./types";
+=======
+import type { Box, Completion, Game, GameMode, Mission, Player, Session } from "./types";
+>>>>>>> b0e269e (feat: add treasure hunt game mode and multi-mode architecture)
 
 export class ApiError extends Error {
   constructor(
@@ -53,10 +57,11 @@ async function request<T>(
 
 export const api = {
   box: (id: string) => request<Box>(`/boxes/${encodeURIComponent(id)}`),
-  create: (id: string, name: string, player_name: string) =>
+  create: (id: string, name: string, player_name: string, mode: GameMode) =>
     request<Session>(`/boxes/${encodeURIComponent(id)}/games`, undefined, {
       name,
       player_name,
+      mode,
     }),
   join: (id: string, name: string) =>
     request<Session>(`/games/${id}/join`, undefined, { name }),
