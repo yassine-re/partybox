@@ -12,6 +12,7 @@ import (
 
 	"partybox/backend/internal/database"
 	"partybox/backend/internal/handlers"
+	"partybox/backend/internal/realtime"
 	"partybox/backend/internal/repositories"
 	"partybox/backend/internal/services"
 )
@@ -51,9 +52,12 @@ func run() error {
 		}
 	}
 	s := &services.Service{Repo: &repositories.Repository{Pool: pool}}
+	frontendURL := env("FRONTEND_URL", "http://localhost:3000")
+	realtimeServer := realtime.NewServer(frontendURL, s.AuthorizeRealtime)
+	defer realtimeServer.Close()
 	server := &http.Server{
 		Addr:              ":" + env("BACKEND_PORT", "8080"),
-		Handler:           handlers.Router(s, env("FRONTEND_URL", "http://localhost:3000")),
+		Handler:           handlers.Router(s, realtimeServer, frontendURL),
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second,
 		WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
 	}

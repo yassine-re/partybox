@@ -10,10 +10,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"partybox/backend/internal/models"
+	"partybox/backend/internal/realtime"
 	"partybox/backend/internal/services"
 )
 
-func Router(s *services.Service, frontendURL string) *gin.Engine {
+func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 	_ = r.SetTrustedProxies(nil)
@@ -29,6 +30,10 @@ func Router(s *services.Service, frontendURL string) *gin.Engine {
 		}
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		if isWebSocketRequest(c.Request) {
+			c.Next()
 			return
 		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8192)
@@ -67,6 +72,9 @@ func Router(s *services.Service, frontendURL string) *gin.Engine {
 			return
 		}
 		session, err := s.Join(c.Request.Context(), c.Param("gameId"), body.Name)
+		if err == nil {
+			rt.Broadcast(realtime.NewEvent(realtime.EventPlayerJoined, session.Game.ID, session.Player.ID))
+		}
 		respond(c, session, err, http.StatusCreated)
 	})
 	// Reserved contract only: no simulated hardware validation or unauthenticated effect.
@@ -112,7 +120,11 @@ func Router(s *services.Service, frontendURL string) *gin.Engine {
 		if !bind(c, &body) {
 			return
 		}
-		result, err := s.Complete(c.Request.Context(), currentPlayer(c), body.AssignmentID)
+		player := currentPlayer(c)
+		result, err := s.Complete(c.Request.Context(), player, body.AssignmentID)
+		if err == nil && !result.AlreadyCompleted {
+			rt.Broadcast(realtime.NewEvent(realtime.EventMissionCompleted, player.GameID, player.ID))
+		}
 		respond(c, result, err, http.StatusOK)
 	})
 	auth.GET("/games/:gameId", func(c *gin.Context) {
@@ -124,15 +136,42 @@ func Router(s *services.Service, frontendURL string) *gin.Engine {
 		respond(c, gin.H{"players": g.Players}, err, http.StatusOK)
 	})
 	auth.POST("/games/:gameId/start", func(c *gin.Context) {
-		err := s.Start(c.Request.Context(), c.Param("gameId"), currentPlayer(c))
+		gameID := c.Param("gameId")
+		err := s.Start(c.Request.Context(), gameID, currentPlayer(c))
+		if err == nil {
+			rt.Broadcast(realtime.NewEvent(realtime.EventGameStarted, gameID, ""))
+		}
 		respond(c, gin.H{"status": "playing"}, err, http.StatusOK)
 	})
 	auth.POST("/games/:gameId/end", func(c *gin.Context) {
-		err := s.End(c.Request.Context(), c.Param("gameId"), currentPlayer(c))
+		gameID := c.Param("gameId")
+		err := s.End(c.Request.Context(), gameID, currentPlayer(c))
+		if err == nil {
+			rt.Broadcast(realtime.NewEvent(realtime.EventGameEnded, gameID, ""))
+		}
 		respond(c, gin.H{"status": "ended"}, err, http.StatusOK)
+	})
+	auth.POST("/games/:gameId/ws-ticket", func(c *gin.Context) {
+		player := currentPlayer(c)
+		gameID := c.Param("gameId")
+		if player.GameID != gameID {
+			respond(c, nil, models.ErrForbidden, 0)
+			return
+		}
+		ticket, expiresAt, err := rt.IssueTicket(player.ID, gameID)
+		respond(c, gin.H{"ticket": ticket, "expires_at": expiresAt}, err, http.StatusCreated)
+	})
+	r.GET("/api/games/:gameId/ws", func(c *gin.Context) {
+		rt.ServeHTTP(c.Writer, c.Request, c.Param("gameId"))
 	})
 	r.NoRoute(func(c *gin.Context) { respond(c, nil, models.ErrNotFound, 0) })
 	return r
+}
+
+func isWebSocketRequest(request *http.Request) bool {
+	return request.Method == http.MethodGet &&
+		strings.HasPrefix(request.URL.Path, "/api/games/") &&
+		strings.HasSuffix(request.URL.Path, "/ws")
 }
 
 func currentPlayer(c *gin.Context) models.Player { return c.MustGet("player").(models.Player) }

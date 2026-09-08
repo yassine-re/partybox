@@ -1,5 +1,12 @@
 import { env } from "$env/dynamic/public";
-import type { Box, Completion, Game, Mission, Player, Session } from "./types";
+import type {
+  Box,
+  Completion,
+  Game,
+  Mission,
+  Player,
+  Session,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -60,6 +67,12 @@ export const api = {
   start: (id: string, token: string) =>
     request(`/games/${id}/start`, token, {}),
   end: (id: string, token: string) => request(`/games/${id}/end`, token, {}),
+  websocketTicket: (id: string, token: string) =>
+    request<{ ticket: string; expires_at: string }>(
+      `/games/${id}/ws-ticket`,
+      token,
+      {},
+    ),
   complete: (token: string, assignment_id: string) =>
     request<Completion>("/players/me/mission/complete", token, {
       assignment_id,

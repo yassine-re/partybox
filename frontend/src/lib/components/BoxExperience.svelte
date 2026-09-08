@@ -7,6 +7,7 @@
     readSession,
     saveSession,
   } from "$lib/api/session";
+  import { GameRealtime, type RealtimeStatus } from "$lib/realtime";
   import type {
     Box,
     Game,
@@ -33,7 +34,11 @@
   let confirmEnd = $state(false);
   let tab = $state<"mission" | "leaderboard">("mission");
   let lastSync = $state("");
+  let realtimeStatus = $state<RealtimeStatus>("offline");
   let inFlight: Promise<void> | null = null;
+  let realtimeClient: GameRealtime | null = null;
+  let realtimeRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let realtimeRefreshPending = false;
   let disposed = false;
   const players = $derived(game?.players ?? []);
   const me = $derived(players.find((p) => p.id === playerId));
@@ -43,6 +48,42 @@
 
   function showError(err: unknown) {
     error = err instanceof Error ? err.message : "Une erreur est survenue.";
+  }
+
+  function stopRealtime() {
+    realtimeClient?.stop();
+    realtimeClient = null;
+    realtimeStatus = "offline";
+  }
+
+  function queueRealtimeRefresh() {
+    realtimeRefreshPending = true;
+    if (realtimeRefreshTimer) clearTimeout(realtimeRefreshTimer);
+    realtimeRefreshTimer = setTimeout(() => {
+      realtimeRefreshTimer = null;
+      if (disposed) return;
+      if (busy || inFlight) return;
+      realtimeRefreshPending = false;
+      void sync();
+    }, 120);
+  }
+
+  function startRealtime() {
+    stopRealtime();
+    const current = session;
+    if (!current || disposed) return;
+    const client = new GameRealtime(current.gameId, current.token, {
+      onEvent: () => queueRealtimeRefresh(),
+      onStatus: (status) => {
+        const wasConnected = realtimeStatus === "connected";
+        realtimeStatus = status;
+        // Catch up on anything committed while a phone was asleep or the
+        // connection was being established.
+        if (status === "connected" && !wasConnected) queueRealtimeRefresh();
+      },
+    });
+    realtimeClient = client;
+    client.start();
   }
 
   async function fetchState() {
@@ -76,6 +117,9 @@
       await inFlight;
     } finally {
       inFlight = null;
+      if (realtimeRefreshPending && !busy && !disposed) {
+        queueRealtimeRefresh();
+      }
     }
   }
 
@@ -89,6 +133,7 @@
         session &&
         [401, 404].includes(err.status)
       ) {
+        stopRealtime();
         clearSession(boxId);
         session = null;
         game = null;
@@ -108,13 +153,8 @@
   }
 
   onMount(() => {
-    let timer: ReturnType<typeof setTimeout>;
+    let fallbackTimer: ReturnType<typeof setInterval> | undefined;
     disposed = false;
-    async function poll() {
-      if (disposed) return;
-      if (!busy && !document.hidden) await sync();
-      if (!disposed) timer = setTimeout(poll, 3000);
-    }
     async function initialize() {
       nickname = readNickname();
       const saved = readSession(boxId);
@@ -133,16 +173,33 @@
       }
       await sync();
       loading = false;
-      if (!disposed) timer = setTimeout(poll, 3000);
+      if (session) startRealtime();
+      // No polling while realtime is healthy. This only covers a broken
+      // socket (and lets a pre-game entry screen discover a new lobby).
+      fallbackTimer = setInterval(() => {
+        if (
+          !disposed &&
+          !busy &&
+          !document.hidden &&
+          realtimeStatus !== "connected"
+        ) {
+          void sync();
+        }
+      }, 25_000);
     }
     void initialize();
     const visible = () => {
-      if (!document.hidden && !busy) void sync();
+      if (!document.hidden) {
+        realtimeClient?.reconnectNow();
+        if (!busy) void sync();
+      }
     };
     document.addEventListener("visibilitychange", visible);
     return () => {
       disposed = true;
-      clearTimeout(timer);
+      stopRealtime();
+      if (fallbackTimer) clearInterval(fallbackTimer);
+      if (realtimeRefreshTimer) clearTimeout(realtimeRefreshTimer);
       document.removeEventListener("visibilitychange", visible);
     };
   });
@@ -160,6 +217,7 @@
       showError(err);
     } finally {
       busy = false;
+      if (realtimeRefreshPending) queueRealtimeRefresh();
     }
   }
 
@@ -169,6 +227,7 @@
     game = result.game;
     nickname = result.player.name;
     storageWarning = !saveSession(boxId, session, nickname);
+    startRealtime();
   }
 
   function enter(name: string, gameName: string) {
@@ -212,6 +271,7 @@
   }
   function backToBox() {
     void action(async () => {
+      stopRealtime();
       clearSession(boxId);
       session = null;
       game = null;
@@ -349,10 +409,22 @@
       >
         <div class="section-heading">
           <h2>Le classement</h2>
-          <span class="mini-label">EN DIRECT*</span>
+          <span class="mini-label realtime-label">
+            <span
+              class:reconnecting={realtimeStatus !== "connected"}
+              class="live-dot"
+              aria-hidden="true"
+            ></span>{realtimeStatus === "connected"
+              ? "EN DIRECT"
+              : "RECONNEXION…"}
+          </span>
         </div>
         <PlayerList {players} me={playerId} ranked />
-        <p class="form-hint">* Actualisé toutes les 3 secondes.</p>
+        <p class="form-hint">
+          {realtimeStatus === "connected"
+            ? "Classement synchronisé en temps réel."
+            : "Actualisation de secours pendant la reconnexion."}
+        </p>
       </section>
     </div>
   {:else}
@@ -390,7 +462,13 @@
 
   <div class="game-bottom">
     <span class="sync-label"
-      >↻ {lastSync ? `Dernière synchro ${lastSync}` : "Synchronisation…"}</span
+      >{realtimeStatus === "connected"
+        ? "● TEMPS RÉEL"
+        : realtimeStatus === "offline"
+          ? "○ HORS LIGNE"
+          : "○ RECONNEXION"} · {lastSync
+        ? `Dernière synchro ${lastSync}`
+        : "Synchronisation…"}</span
     ><button class="text-button" disabled={busy} onclick={() => void sync()}
       >Actualiser</button
     >

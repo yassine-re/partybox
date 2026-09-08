@@ -39,7 +39,7 @@ Caddy HTTPS (profil production, optionnel en local)
        │
        ▼
 SvelteKit + TypeScript :3000
-       │ fetch /api → passerelle serveur de même origine
+       │ REST /api + upgrade WebSocket de même origine
        ▼
 Go + Gin :8080
        │ pgx / transactions SQL
@@ -49,7 +49,7 @@ PostgreSQL :5432
 
 - **Frontend** : SvelteKit 2, Svelte 5, TypeScript, CSS simple et composants réutilisables. Interface mobile sombre, accents citron et rose. Aucun framework CSS ni gestionnaire d’état supplémentaire. Le build utilise `adapter-node` pour le déploiement sur VPS.
 - **Backend** : les handlers gèrent HTTP/JSON, les services gèrent les règles et l’enchaînement transactionnel, les repositories contiennent le SQL et les verrous PostgreSQL. Pas d’ORM.
-- **Communication** : `fetch` regroupé dans `frontend/src/lib/api/`. Polling toutes les trois secondes quand la page est visible, bouton de rafraîchissement et resynchronisation au retour dans l’onglet. Aucun WebSocket.
+- **Communication** : REST reste la source de vérité via `frontend/src/lib/api/`. Un WebSocket authentifié par ticket signale uniquement qu’une ressource a changé, puis le frontend la relit via REST. Le bouton de rafraîchissement et la resynchronisation au retour dans l’onglet sont conservés ; un fallback à 25 secondes ne tourne que lorsque le socket est indisponible.
 - **Réseau** : le navigateur appelle `/api` sur son propre domaine. La passerelle SvelteKit relaie vers `backend` sur le réseau privé Compose. Le frontend est accessible sur le réseau de développement ; PostgreSQL publie uniquement un port local sur `127.0.0.1` pour les explorateurs de base de données. L’API Go ne publie pas de port sur l’hôte.
 - **Persistance** : migrations SQL versionnées, seed idempotent et volume PostgreSQL. Les conteneurs API et frontend tournent avec des utilisateurs sans privilèges.
 
@@ -64,6 +64,7 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── internal/
 │   │   ├── database/            # Pool, exécution des migrations et du seed
 │   │   ├── handlers/            # Routes Gin, auth Bearer, JSON et erreurs
+│   │   ├── realtime/            # Tickets courts, hub par partie et clients WebSocket
 │   │   ├── services/            # Identités et cycle de vie d’une partie
 │   │   ├── repositories/        # SQL PostgreSQL et transactions
 │   │   └── models/              # Types métier / réponses JSON
@@ -72,6 +73,7 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   └── go.sum
 ├── frontend/
 │   ├── src/lib/api/             # Client fetch, types et sessions locales
+│   ├── src/lib/realtime/        # Connexion, backoff et notifications entrantes
 │   ├── src/lib/components/      # Entrée, jeu, mission et liste/classement
 │   ├── src/routes/
 │   │   ├── +page.svelte         # Accueil et saisie d’un code box
@@ -163,14 +165,14 @@ Pour des migrations ou un seed modifiés dans le dépôt, reconstruire d’abord
 
 ## Partie avec deux navigateurs
 
-Ce parcours est documenté pour la prochaine vérification manuelle ; il n’a pas été exécuté à cette étape, conformément à la consigne de différer les tests.
+Ce parcours sert de vérification manuelle sur deux profils ou appareils distincts.
 
 1. Dans le navigateur A, ouvrir `/box/PB001`, saisir un pseudo et créer une partie. Ce joueur devient l’hôte.
 2. Dans le navigateur B, un autre profil ou une fenêtre privée, ouvrir exactement la même URL et rejoindre avec un autre pseudo. Deux onglets ordinaires du même profil partagent le stockage et représentent donc le même joueur.
 3. Le lobby affiche les deux joueurs. Seul l’hôte peut démarrer, à partir de deux joueurs.
 4. Démarrer depuis A. Chaque écran affiche sa propre mission, son score et le classement.
 5. Accomplir la mission dans la soirée puis appuyer sur **J’ai réussi**. Le serveur attribue les points prévus et une nouvelle mission.
-6. Le classement de B se rafraîchit sous trois secondes. Sur smartphone, l’onglet **Classement** permet de le consulter.
+6. Le classement de B se rafraîchit quasiment immédiatement via WebSocket. Sur smartphone, l’onglet **Classement** permet de le consulter.
 7. Recharger la page : le token local restaure le même joueur, sa mission et son score.
 8. L’hôte termine la partie via le bouton dédié et sa confirmation. Les deux écrans affichent le classement final et le nombre de missions accomplies.
 9. **Revenir à l’accueil de la box** libère la session locale de cette partie et permet d’en créer ou rejoindre une nouvelle ; le pseudo reste mémorisé.
@@ -212,6 +214,8 @@ Toutes les réponses applicatives sont JSON. Les routes privées exigent `Author
 | `GET /api/games/:gameId` | Joueur de la partie | Statut, dates et joueurs avec scores |
 | `POST /api/games/:gameId/start` | Hôte | `{}` ; au moins deux joueurs |
 | `POST /api/games/:gameId/end` | Hôte | `{}` ; fige les scores, peut aussi fermer un lobby |
+| `POST /api/games/:gameId/ws-ticket` | Joueur de la partie | Ticket opaque à usage unique, valable 30 secondes |
+| `GET /api/games/:gameId/ws?ticket=…` | Ticket court | Connexion WebSocket limitée à la partie du joueur |
 | `GET /api/players/me` | Joueur | Identité, score, nombre de missions accomplies |
 | `GET /api/players/me/mission` | Joueur | `{ "mission": ... }` ou `null` avant démarrage |
 | `POST /api/players/me/mission/complete` | Joueur | `{ "assignment_id": "<UUID de l’attribution>" }` |
@@ -221,6 +225,18 @@ Toutes les réponses applicatives sont JSON. Les routes privées exigent `Author
 Création et entrée renvoient `201` avec `{ token, player, game }`. Une validation renvoie `{ awarded_points, already_completed, player, mission }`. Le champ `mission.id` est l’identifiant de **l’attribution**, tandis que `mission.mission_id` identifie la mission du catalogue.
 
 Erreurs : `{ "error": { "code": "conflict", "message": "..." } }`. Codes HTTP principaux : `400` données invalides, `401` session invalide, `403` action interdite, `404` introuvable, `409` conflit d’état ou pseudo déjà utilisé, `501` contrat ESP32 non implémenté.
+
+### Temps réel et authentification WebSocket
+
+Le navigateur demande d’abord un ticket avec son header `Authorization: Bearer <player-token>`. Le backend conserve uniquement le hash de ce ticket en mémoire, lié au joueur et à sa partie. Le ticket expire après 30 secondes et est supprimé dès sa première présentation à la route WebSocket. Le token joueur longue durée n’apparaît donc jamais dans l’URL.
+
+Les connexions sont regroupées en mémoire par `gameId`. Les événements `player_joined`, `game_started`, `mission_completed` et `game_ended` contiennent seulement leur type, la partie, éventuellement le joueur concerné et l’heure. Aucun texte ou identifiant de mission n’est diffusé. À la réception, chaque client regroupe les notifications rapprochées et recharge son état et sa mission privée via les endpoints REST authentifiés.
+
+La route WebSocket est explicitement exclue du timeout HTTP de 10 secondes ; les routes REST le conservent. Le serveur envoie des pings, retire les clients déconnectés et ferme les connexions au shutdown. Le client se reconnecte avec un nouveau ticket après 1, 2, 4, 8 secondes, puis jusqu’à un plafond de 30 secondes. Une resynchronisation REST à l’ouverture du socket couvre les événements survenus pendant une coupure.
+
+Cette couche est volontairement locale au processus Go : une seule instance backend doit traiter une partie. Un déploiement multi-instance nécessiterait ultérieurement un bus inter-instance, hors périmètre du MVP.
+
+Le serveur Node relaie l’upgrade de `/api/games/:gameId/ws` vers Go et Vite fait de même en développement. Caddy relaie nativement les WebSockets avec `reverse_proxy`, donc aucune configuration d’upgrade spécifique n’est nécessaire.
 
 ### Identité et cohérence
 
@@ -262,7 +278,12 @@ Ouvrir `http://localhost:5173/box/PB001`. Pour utiliser PostgreSQL depuis Compos
 
 ### Vérifications et tests
 
-Les tests automatisés et la vérification fonctionnelle multi-navigateurs sont **reportés à la demande du porteur du projet**. Aucun fichier de test n’est ajouté. Les commandes suivantes servent uniquement à vérifier les types, la compilation et la configuration :
+Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket pour l’autorisation, le refus inter-partie, la diffusion à plusieurs clients d’une même partie, l’isolation entre parties et la déconnexion propre.
+
+```sh
+cd backend
+go test ./...
+```
 
 ```sh
 cd frontend
@@ -270,14 +291,7 @@ npm run check
 npm run build
 ```
 
-```sh
-cd backend
-go build ./...
-```
-
-Depuis la racine : `docker compose config --quiet` et `docker compose build`. Les healthchecks Compose vérifient uniquement la disponibilité des services ; ils ne valident pas la boucle métier.
-
-Quand les tests seront autorisés, couvrir en priorité la boucle complète, les droits hôte, les requêtes de validation concurrentes, les collisions de création et la restauration de session.
+Depuis la racine : `docker compose config --quiet` et `docker compose up --build`. Les healthchecks Compose vérifient la disponibilité des services. Le parcours création → arrivée d’un second joueur → démarrage → validation → fin a également été exécuté avec deux contextes Chromium isolés, en vérifiant l’absence de polling REST pendant une période connectée.
 
 ## VPS Linux et Caddy
 
@@ -301,8 +315,8 @@ La box `PB001` reste une référence de développement. Pour provisionner une au
 - La réussite d’une mission repose sur la déclaration du joueur. Pas de validation matérielle ni d’antitriche.
 - Pas de transfert d’hôte, de récupération de token perdu, de révocation, d’expiration automatique ou de nettoyage des anciennes parties. Si l’hôte perd son stockage local pendant une partie, une intervention en base sera nécessaire pour la fermer.
 - Pas de présence connectée/déconnectée : le lobby liste les inscrits. Pas de fonctionnement hors ligne ; une connexion au serveur est nécessaire.
-- Pas encore de PWA installable, service worker, push, WebSocket, compte email/OAuth, upload, MQTT, Redis ou ML. La structure SvelteKit et les assets statiques permettent d’ajouter une PWA plus tard.
-- Les tests de la boucle fonctionnelle restent à réaliser. Le HTTPS public et le firmware n’ont pas été vérifiés sur du matériel réel.
+- Pas encore de PWA installable, service worker, push, compte email/OAuth, upload, MQTT, Redis ou ML. La structure SvelteKit et les assets statiques permettent d’ajouter une PWA plus tard.
+- Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium ; deux téléphones physiques, le HTTPS public et le firmware n’ont pas été vérifiés sur du matériel réel.
 
 Pour intégrer l’ESP32 ensuite :
 

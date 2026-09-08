@@ -773,6 +773,16 @@ form .button {
   color: var(--muted);
   letter-spacing: 0.07em;
 }
+.realtime-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--lime);
+}
+.live-dot.reconnecting {
+  background: var(--muted);
+  box-shadow: none;
+}
 .leaderboard-panel {
   margin-top: 36px;
 }
