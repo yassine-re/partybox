@@ -1,5 +1,7 @@
 <script lang="ts">
-  import type { Box } from "$lib/api/types";
+  import type { Box, GameMode } from "$lib/api/types";
+  import { DEFAULT_GAME_MODE, GAME_MODES } from "$lib/game-modes";
+  import ModeSelector from "./ModeSelector.svelte";
   let {
     box,
     nickname,
@@ -9,10 +11,13 @@
     box: Box;
     nickname: string;
     busy: boolean;
-    onsubmit: (name: string, gameName: string) => void;
+    onsubmit: (name: string, gameName: string, mode: GameMode) => void;
   } = $props();
   let name = $state("");
   let gameName = $state("La soirée du salon");
+  let selectedMode = $state<GameMode>(DEFAULT_GAME_MODE);
+  const mode = $derived(box.active_game?.mode ?? selectedMode);
+  const presentation = $derived(GAME_MODES[mode]);
   $effect(() => {
     if (nickname && !name) name = nickname;
   });
@@ -23,19 +28,18 @@
     <div class="eyebrow">
       <span class="live-dot" aria-hidden="true"></span> BOX {box.id} · PRÊTE À JOUER
     </div>
-    <h1>Ce soir,<br />tout le monde<br />a un <em>secret.</em></h1>
+    <h1>{presentation.heading[0]}<br />{presentation.heading[1]}<br />{presentation.heading[2]} <em>{presentation.punchline}</em></h1>
     <p class="intro">
-      Des missions discrètes. Des amis complices.<br />Une soirée qui ne
-      ressemble à aucune autre.
+      {presentation.intro}
     </p>
     <div class="mode-ticket">
-      <span class="ticket-star" aria-hidden="true">✳</span>
+      <span class="ticket-star" aria-hidden="true">{presentation.symbol}</span>
       <div>
         <span class="eyebrow">LE MODE DE LA SOIRÉE</span>
-        <h2>Secret missions</h2>
-        <p>2 joueurs et plus · Chacun pour soi</p>
+        <h2>{presentation.label}</h2>
+        <p>{presentation.minPlayers} joueurs et plus · Chacun pour soi</p>
       </div>
-      <span class="ticket-number">01</span>
+      <span class="ticket-number">{presentation.number}</span>
     </div>
     <p class="small-note">
       Reste sympa : chacun peut refuser de participer à une action.
@@ -62,9 +66,14 @@
     <form
       onsubmit={(event) => {
         event.preventDefault();
-        onsubmit(name, gameName);
+        onsubmit(name, gameName, mode);
       }}
     >
+      {#if !box.active_game}
+        <ModeSelector bind:value={selectedMode} disabled={busy} />
+      {:else}
+        <p class="small-note">{presentation.description}</p>
+      {/if}
       <label for="nickname">TON PSEUDO</label>
       <input
         id="nickname"

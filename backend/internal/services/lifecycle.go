@@ -7,14 +7,14 @@ import (
 	"partybox/backend/internal/repositories"
 )
 
-func (s *Service) create(ctx context.Context, boxID, name, hostName, hash string) (models.Session, error) {
+func (s *Service) create(ctx context.Context, boxID, name, hostName, hash string, mode models.GameMode) (models.Session, error) {
 	var result models.Session
 	err := s.Repo.Transaction(ctx, func(tx *repositories.Transaction) error {
 		if err := tx.LockBox(ctx, boxID); err != nil {
 			return err
 		}
 		var err error
-		result.Game, err = tx.InsertGame(ctx, boxID, name)
+		result.Game, err = tx.InsertGame(ctx, boxID, name, mode)
 		if err != nil {
 			return err
 		}
@@ -67,8 +67,12 @@ func (s *Service) transition(ctx context.Context, gameID string, p models.Player
 			if err != nil {
 				return err
 			}
-			if len(list) < 2 {
-				return fmt.Errorf("%w : il faut au moins deux joueurs", models.ErrConflict)
+			definition, supported := models.LookupGameMode(g.Mode)
+			if !supported {
+				return fmt.Errorf("%w : mode de jeu non supporté", models.ErrConflict)
+			}
+			if len(list) < definition.MinPlayers {
+				return fmt.Errorf("%w : il faut au moins %d joueurs", models.ErrConflict, definition.MinPlayers)
 			}
 			for _, member := range list {
 				if err = tx.AssignMission(ctx, member.ID); err != nil {

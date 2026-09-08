@@ -1,10 +1,12 @@
 <script lang="ts">
-  import type { Player } from "$lib/api/types";
+  import type { GameMode, Player } from "$lib/api/types";
+  import { DEFAULT_GAME_MODE, GAME_MODES } from "$lib/game-modes";
   let {
     players,
     me = "",
     ranked = false,
-  }: { players: Player[]; me?: string; ranked?: boolean } = $props();
+    mode = DEFAULT_GAME_MODE,
+  }: { players: Player[]; me?: string; ranked?: boolean; mode?: GameMode } = $props();
 </script>
 
 <ol
@@ -31,7 +33,7 @@
             >{/if}</strong
         ><small
           >{ranked
-            ? `${player.completed_missions} mission${player.completed_missions > 1 ? "s" : ""} accomplie${player.completed_missions > 1 ? "s" : ""}`
+            ? `${player.completed_missions} ${player.completed_missions > 1 ? GAME_MODES[mode].completedPlural : GAME_MODES[mode].completedSingular}`
             : player.is_host
               ? "Aux commandes de la soirée"
               : "Prêt à jouer"}</small

@@ -43,7 +43,10 @@ func newToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(bytes[:]), nil
 }
 
-func (s *Service) Create(ctx context.Context, boxID, gameName, playerName string) (models.Session, error) {
+func (s *Service) Create(ctx context.Context, boxID, gameName, playerName string, mode models.GameMode) (models.Session, error) {
+	if _, ok := models.LookupGameMode(mode); !ok {
+		return models.Session{}, fmt.Errorf("%w : mode de jeu non supporté", models.ErrInvalid)
+	}
 	gameName, err := cleanName(gameName, 60)
 	if err != nil {
 		return models.Session{}, err
@@ -56,7 +59,7 @@ func (s *Service) Create(ctx context.Context, boxID, gameName, playerName string
 	if err != nil {
 		return models.Session{}, err
 	}
-	result, err := s.create(ctx, boxID, gameName, playerName, TokenHash(token))
+	result, err := s.create(ctx, boxID, gameName, playerName, TokenHash(token), mode)
 	if err == nil {
 		result.Token = token
 	}

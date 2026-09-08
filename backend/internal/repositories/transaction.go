@@ -12,9 +12,9 @@ func (t *Transaction) LockBox(ctx context.Context, id string) error {
 	return t.tx.QueryRow(ctx, `SELECT id FROM boxes WHERE id=$1 FOR UPDATE`, id).Scan(&found)
 }
 
-func (t *Transaction) InsertGame(ctx context.Context, boxID, name string) (models.Game, error) {
+func (t *Transaction) InsertGame(ctx context.Context, boxID, name string, mode models.GameMode) (models.Game, error) {
 	var id string
-	err := t.tx.QueryRow(ctx, `INSERT INTO games(id,box_id,name) VALUES(gen_random_uuid(),$1,$2) RETURNING id`, boxID, name).Scan(&id)
+	err := t.tx.QueryRow(ctx, `INSERT INTO games(id,box_id,name,mode) VALUES(gen_random_uuid(),$1,$2,$3) RETURNING id`, boxID, name, mode).Scan(&id)
 	if err != nil {
 		return models.Game{}, err
 	}

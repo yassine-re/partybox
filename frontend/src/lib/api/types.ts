@@ -1,3 +1,5 @@
+export type GameMode = "secret_missions" | "treasure_hunt";
+
 export interface Player {
   id: string;
   game_id: string;
@@ -10,7 +12,7 @@ export interface Game {
   id: string;
   box_id: string;
   name: string;
-  mode: "secret_missions";
+  mode: GameMode;
   status: "lobby" | "playing" | "ended";
   players?: Player[];
   created_at: string;
