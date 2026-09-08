@@ -1,0 +1,109 @@
+name: partybox
+
+x-backend: &backend
+  image: partybox-backend:local
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  environment: &backend-env
+    DATABASE_URL: ${DATABASE_URL:-postgres://partybox:partybox_dev_only@postgres:5432/partybox?sslmode=disable}
+    BACKEND_PORT: ${BACKEND_PORT:-8080}
+    FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-partybox}
+      POSTGRES_USER: ${POSTGRES_USER:-partybox}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-partybox_dev_only}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *backend
+    command: [migrate]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  seed:
+    <<: *backend
+    command: [seed]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  backend:
+    <<: *backend
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          CMD-SHELL,
+          "wget -q -O /dev/null http://127.0.0.1:$$BACKEND_PORT/api/health",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    image: partybox-frontend:local
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-/api}
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://backend:${BACKEND_PORT:-8080}}
+      ORIGIN: ${FRONTEND_URL:-http://localhost:3000}
+      BODY_SIZE_LIMIT: 16K
+    ports:
+      - "${FRONTEND_BIND:-0.0.0.0}:${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 4s
+      retries: 5
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [production]
+    environment:
+      DOMAIN: ${DOMAIN:-partybox.example.com}
+      ACME_EMAIL: ${ACME_EMAIL:-you@example.com}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,11 @@
+:root {
+  --bg: #111410;
+  --panel: #1b1f18;
+  --text: #f1f3e8;
+  --muted: #a3aa96;
+  --line: #333a2b;
+  --lime: #c7ff5e;
+  --pink: #f9a8cb;
+  --blue: #a9d8ff;
+  color-scheme: dark;
+}
