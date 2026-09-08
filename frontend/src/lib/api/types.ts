@@ -1,25 +1,4 @@
-export type GameMode = "secret_missions" | "treasure_hunt" | "chaos";
-
-export type ChaosEventType =
-  | "double_trouble"
-  | "bounty"
-  | "mission_shuffle";
-
-export interface ChaosState {
-  active: boolean;
-  event: {
-    type: ChaosEventType;
-    remaining_uses: number;
-    target_player_id: string | null;
-    target_player_name: string | null;
-    bonus?: number;
-  } | null;
-  progress: {
-    completed: number;
-    trigger_at: number;
-  };
-  sequence: number;
-}
+export type GameMode = "secret_missions" | "treasure_hunt";
 
 export interface Player {
   id: string;

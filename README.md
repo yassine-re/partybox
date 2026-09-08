@@ -1,6 +1,6 @@
 # PartyBox
 
-PartyBox transforme une soirée IRL en jeu de missions secrètes, de chasse au trésor ou en partie Chaos aux règles dynamiques. Un tag NFC passif dans le boîtier ouvre une URL comme `https://partybox.example.com/box/PB001`. Chaque joueur utilise son téléphone ; Go et PostgreSQL centralisent les parties, missions, scores et événements métier sur un serveur.
+PartyBox transforme une soirée IRL en jeu de missions secrètes ou de chasse au trésor. Un tag NFC passif dans le boîtier ouvre une URL comme `https://partybox.example.com/box/PB001`. Chaque joueur utilise son téléphone ; Go et PostgreSQL centralisent les parties, missions, scores et événements métier sur un serveur.
 
 Ce dépôt contient le premier MVP logiciel : création de partie, lobby partagé, démarrage par l’hôte, missions privées, validation virtuelle, points, nouvelle mission et classement final. Le firmware et le machine learning ont uniquement leur emplacement préparé.
 
@@ -17,7 +17,7 @@ docker compose up --build
 
 Ouvrir **[http://localhost:3000/box/PB001](http://localhost:3000/box/PB001)**.
 
-Compose attend PostgreSQL, applique les migrations, exécute le seed idempotent, puis démarre l’API et le frontend. La box `PB001`, **18 missions secrètes**, **15 défis de chasse au trésor** et **15 missions Chaos** sont créés automatiquement. Aucune partie ni joueur de démonstration n’est créé.
+Compose attend PostgreSQL, applique les migrations, exécute le seed idempotent, puis démarre l’API et le frontend. La box `PB001`, **18 missions secrètes** et **15 défis de chasse au trésor** sont créés automatiquement. Aucune partie ni joueur de démonstration n’est créé.
 
 Pour lancer en arrière-plan, suivre les logs ou arrêter :
 
@@ -64,7 +64,6 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── internal/
 │   │   ├── database/            # Pool, exécution des migrations et du seed
 │   │   ├── handlers/            # Composition HTTP + routes boxes/games/players/realtime
-│   │   ├── chaos/               # Moteur, événements et état du mode Chaos
 │   │   ├── realtime/            # Tickets courts, hub par partie et clients WebSocket
 │   │   ├── services/            # Identités et cycle de vie d’une partie
 │   │   ├── repositories/        # SQL, transactions et journal d’événements
@@ -76,7 +75,7 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── src/lib/api/             # Client fetch, types et sessions locales
 │   ├── src/lib/realtime/        # Connexion, backoff et notifications entrantes
 │   ├── src/lib/components/      # Orchestration de l’expérience et composants partagés
-│   │   └── game/                # En-tête, lobby, jeu, bannière Chaos et résultats
+│   │   └── game/                # En-tête, lobby, jeu et résultats finaux
 │   ├── src/routes/
 │   │   ├── +page.svelte         # Accueil et saisie d’un code box
 │   │   ├── box/[boxId]/         # Entrée → lobby → jeu → fin
@@ -90,7 +89,6 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── migrations/001_initial.{up,down}.sql
 │   ├── migrations/002_game_modes.{up,down}.sql
 │   ├── migrations/003_game_events.{up,down}.sql
-│   ├── migrations/005_chaos_mode.{up,down}.sql
 │   └── seed.sql
 ├── firmware/
 │   ├── platformio.ini
@@ -162,9 +160,7 @@ docker compose run --rm seed
 
 `migrate` applique les fichiers `*.up.sql` par ordre lexical et inscrit leurs versions dans `schema_migrations`. Les migrations et le suivi des versions partagent une transaction ; un verrou évite deux exécutions simultanées. Ajouter une nouvelle migration numérotée plutôt que modifier une migration déjà appliquée.
 
-Le seed insère `PB001`, 18 missions secrètes, 15 défis de chasse au trésor et 15 missions Chaos avec points, catégorie et difficulté (1 à 3), sans dupliquer les lignes ni remplacer les données existantes. Les missions déjà jouées sont évitées tant qu’il reste des missions inédites dans le mode choisi ; après épuisement du catalogue, la moins récemment attribuée revient.
-
-La numérotation passe volontairement de `003` à `005` : le numéro `004` est réservé au développement parallèle de génération de missions.
+Le seed insère `PB001`, 18 missions secrètes et 15 défis de chasse au trésor avec points, catégorie et difficulté (1 à 3), sans dupliquer les lignes ni remplacer les données existantes. Les missions déjà jouées sont évitées tant qu’il reste des missions inédites dans le mode choisi ; après épuisement du catalogue, la moins récemment attribuée revient.
 
 Le fichier `.down.sql` est fourni pour un retour arrière manuel. Le binaire n’exécute pas de rollback automatique. Un rollback du schéma initial supprime les parties et leurs données : arrêter les services applicatifs et sauvegarder la base avant toute intervention de ce type.
 
@@ -183,8 +179,6 @@ Ce parcours sert de vérification manuelle sur deux profils ou appareils distinc
 7. Recharger la page : le token local restaure le même joueur, sa mission et son score.
 8. L’hôte termine la partie via le bouton dédié et sa confirmation. Les deux écrans affichent le classement final et le nombre de missions accomplies.
 9. **Revenir à l’accueil de la box** libère la session locale de cette partie et permet d’en créer ou rejoindre une nouvelle ; le pseudo reste mémorisé.
-
-En mode Chaos, un événement est sélectionné après trois validations globales. `DOUBLE TROUBLE` double les trois validations suivantes, `BOUNTY` ajoute 100 points à la prochaine validation d’une cible choisie côté serveur, et `MISSION SHUFFLE` annule les missions courantes avant d’en attribuer de nouvelles à tout le monde.
 
 Pour utiliser des téléphones : être sur le même Wi-Fi, définir `FRONTEND_URL=http://<IP_LAN_DU_PC>:3000`, garder `PUBLIC_API_URL=/api`, puis ouvrir `http://<IP_LAN_DU_PC>:3000/box/PB001`. Utiliser cette adresse sur tous les appareils ; `localhost` désigne le téléphone lui-même. Le port 3000 doit être autorisé par le pare-feu local. Le bouton de copie affiche le lien en texte si le presse-papiers est indisponible en HTTP.
 
@@ -221,7 +215,6 @@ Toutes les réponses applicatives sont JSON. Les routes privées exigent `Author
 | `POST /api/boxes/:boxId/games` | Public | `{ "name": "La soirée", "player_name": "Alice", "mode": "secret_missions" }` → session hôte |
 | `POST /api/games/:gameId/join` | Public | `{ "name": "Bob" }` → session joueur |
 | `GET /api/games/:gameId` | Joueur de la partie | Statut, dates et joueurs avec scores |
-| `GET /api/games/:gameId/chaos` | Joueur d’une partie Chaos | Événement actif, progression et séquence |
 | `POST /api/games/:gameId/start` | Hôte | `{}` ; au moins deux joueurs |
 | `POST /api/games/:gameId/end` | Hôte | `{}` ; fige les scores, peut aussi fermer un lobby |
 | `POST /api/games/:gameId/ws-ticket` | Joueur de la partie | Ticket opaque à usage unique, valable 30 secondes |
@@ -254,15 +247,7 @@ La migration `003_game_events` ajoute la table interne `game_events` : UUID, par
 
 Ce journal PostgreSQL est distinct des notifications WebSocket : `models.GameEvent` conserve un historique pour le debug, l’analytics et de futurs traitements, tandis que `realtime.Event` reste un signal éphémère demandant au navigateur de relire REST. Aucune API publique n’expose actuellement `game_events`.
 
-Les mutations existantes enregistrent `player_joined`, `game_started`, `mission_completed` et `game_ended`. Chaos ajoute `chaos_event_triggered`, `chaos_event_consumed` et `mission_cancelled`. La validation stocke `assignment_id` et le nombre réel de points accordés dans son payload. Chaque événement est écrit dans la même transaction que l’arrivée, le changement de statut, le score ou le changement de mission correspondant ; un retry déjà traité ne crée donc pas de doublon ni de consommation Chaos supplémentaire.
-
-### Moteur Chaos
-
-Chaque partie Chaos possède une ligne `chaos_states` en PostgreSQL. Elle conserve l’événement courant, sa cible éventuelle, ses utilisations restantes, le nombre de validations depuis le dernier déclenchement et un numéro de séquence. PostgreSQL reste ainsi la source de vérité, y compris après un redémarrage du backend.
-
-Le seuil de trois validations est centralisé dans le moteur. La sélection de l’événement et de la cible passe par une interface injectable : le runtime utilise une sélection aléatoire, tandis que les tests forcent chaque scénario. Un effet à plusieurs utilisations bloque tout événement incompatible jusqu’à sa consommation. Le score, l’état Chaos, les assignments et le journal métier sont validés ensemble dans une transaction.
-
-`MISSION SHUFFLE` fait passer chaque assignment courant à `cancelled`, puis recrée exactement une mission `assigned` par joueur. Le nombre de missions accomplies ne compte que le statut `completed`. Aucun timer, scheduler, état Chaos côté navigateur ou nouveau payload WebSocket n’est utilisé.
+Les mutations existantes enregistrent `player_joined`, `game_started`, `mission_completed` et `game_ended`. La validation stocke aussi `assignment_id` et `points` dans son payload. Chaque événement est écrit dans la même transaction que l’arrivée, le changement de statut ou la validation correspondante ; un retry réussi mais déjà traité ne crée donc pas de doublon. La constante générique `mission_assigned` est réservée, mais cet événement n’est pas encore écrit afin de ne pas complexifier le mécanisme d’attribution actuel.
 
 ### Identité et cohérence
 
@@ -304,7 +289,7 @@ Ouvrir `http://localhost:5173/box/PB001`. Pour utiliser PostgreSQL depuis Compos
 
 ### Vérifications et tests
 
-Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket pour l’autorisation, le refus inter-partie, la diffusion à plusieurs clients d’une même partie, l’isolation entre parties et la déconnexion propre. Les tests d’intégration PostgreSQL utilisent un schéma isolé et couvrent les trois modes, les migrations sur base vierge, `001 + 002 → 003`, la migration `005`, les événements métier et l’idempotence. Les scénarios Chaos forcent successivement Double Trouble, Bounty et Mission Shuffle.
+Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket pour l’autorisation, le refus inter-partie, la diffusion à plusieurs clients d’une même partie, l’isolation entre parties et la déconnexion propre. Les tests d’intégration PostgreSQL utilisent un schéma isolé et couvrent les deux modes, les migrations sur base vierge et `001 + 002 → 003`, ainsi que les quatre événements métier persistés et leur idempotence.
 
 ```sh
 cd backend
@@ -341,7 +326,6 @@ La box `PB001` reste une référence de développement. Pour provisionner une au
 - La réussite d’une mission repose sur la déclaration du joueur. Pas de validation matérielle ni d’antitriche.
 - Pas de transfert d’hôte, de récupération de token perdu, de révocation, d’expiration automatique ou de nettoyage des anciennes parties. Si l’hôte perd son stockage local pendant une partie, une intervention en base sera nécessaire pour la fermer.
 - Pas de présence connectée/déconnectée : le lobby liste les inscrits. Pas de fonctionnement hors ligne ; une connexion au serveur est nécessaire.
-- Les événements Chaos sont déclenchés par le nombre de validations, sans timer. Ils ne comprennent pour l’instant que Double Trouble, Bounty et Mission Shuffle.
 - Pas encore de PWA installable, service worker, push, compte email/OAuth, upload, MQTT, Redis ou ML. La structure SvelteKit et les assets statiques permettent d’ajouter une PWA plus tard.
 - Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium ; deux téléphones physiques, le HTTPS public et le firmware n’ont pas été vérifiés sur du matériel réel.
 

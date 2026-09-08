@@ -11,24 +11,11 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"partybox/backend/internal/chaos"
 	"partybox/backend/internal/models"
 	"partybox/backend/internal/repositories"
 )
 
-type Service struct {
-	Repo  *repositories.Repository
-	Chaos *chaos.Engine
-}
-
-var defaultChaosEngine = chaos.NewEngine(nil)
-
-func (s *Service) chaosEngine() *chaos.Engine {
-	if s.Chaos != nil {
-		return s.Chaos
-	}
-	return defaultChaosEngine
-}
+type Service struct{ Repo *repositories.Repository }
 
 func cleanName(value string, max int) (string, error) {
 	value = strings.TrimSpace(value)
