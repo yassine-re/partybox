@@ -20,13 +20,7 @@ func (s *Service) create(ctx context.Context, boxID, name, hostName, hash string
 			return err
 		}
 		result.Player, err = tx.InsertPlayer(ctx, result.Game.ID, hostName, hash, true)
-		if err != nil {
-			return err
-		}
-		if mode == models.ModeChaos {
-			return s.chaosEngine().Initialize(ctx, tx, result.Game.ID)
-		}
-		return nil
+		return err
 	})
 	return result, err
 }
@@ -124,28 +118,13 @@ func (s *Service) complete(ctx context.Context, p models.Player, assignmentID st
 		if status == "completed" {
 			result.AlreadyCompleted = true
 		} else {
-			if status != "assigned" {
-				return fmt.Errorf("%w : cette mission n’est plus active", models.ErrConflict)
-			}
 			if g.Status != "playing" {
 				return models.ErrConflict
-			}
-			awardedPoints := points
-			allowChaosTrigger := true
-			if g.Mode == models.ModeChaos {
-				effect, effectErr := s.chaosEngine().ApplyCompletion(
-					ctx, tx, g.ID, p.ID, points,
-				)
-				if effectErr != nil {
-					return effectErr
-				}
-				awardedPoints = effect.AwardedPoints
-				allowChaosTrigger = !effect.HadBlockingEvent
 			}
 			if err = tx.CompleteAssignment(ctx, assignmentID); err != nil {
 				return err
 			}
-			if err = tx.AddScore(ctx, p.ID, awardedPoints); err != nil {
+			if err = tx.AddScore(ctx, p.ID, points); err != nil {
 				return err
 			}
 			if err = tx.AssignMission(ctx, p.ID); err != nil {
@@ -154,7 +133,7 @@ func (s *Service) complete(ctx context.Context, p models.Player, assignmentID st
 			payload, marshalErr := json.Marshal(struct {
 				AssignmentID string `json:"assignment_id"`
 				Points       int    `json:"points"`
-			}{AssignmentID: assignmentID, Points: awardedPoints})
+			}{AssignmentID: assignmentID, Points: points})
 			if marshalErr != nil {
 				return marshalErr
 			}
@@ -165,14 +144,7 @@ func (s *Service) complete(ctx context.Context, p models.Player, assignmentID st
 			}); err != nil {
 				return err
 			}
-			if g.Mode == models.ModeChaos {
-				if err = s.chaosEngine().MaybeTriggerEvent(
-					ctx, tx, g.ID, allowChaosTrigger,
-				); err != nil {
-					return err
-				}
-			}
-			result.AwardedPoints = awardedPoints
+			result.AwardedPoints = points
 		}
 		result.Player, err = tx.Player(ctx, p.ID)
 		if err != nil {

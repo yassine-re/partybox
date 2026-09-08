@@ -13,9 +13,6 @@ const (
 	GameEventMissionAssigned  GameEventType = "mission_assigned"
 	GameEventMissionCompleted GameEventType = "mission_completed"
 	GameEventGameEnded        GameEventType = "game_ended"
-	GameEventChaosTriggered   GameEventType = "chaos_event_triggered"
-	GameEventChaosConsumed    GameEventType = "chaos_event_consumed"
-	GameEventMissionCancelled GameEventType = "mission_cancelled"
 )
 
 // GameEvent is persisted for history and analytics. It is distinct from the

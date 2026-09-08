@@ -1,10 +1,9 @@
 <script lang="ts">
-  import type { ChaosState, Game, Mission, Player } from "$lib/api/types";
+  import type { Game, Mission, Player } from "$lib/api/types";
   import type { RealtimeStatus } from "$lib/realtime";
   import { GAME_MODES } from "$lib/game-modes";
   import MissionCard from "../MissionCard.svelte";
   import PlayerList from "../PlayerList.svelte";
-  import ChaosBanner from "./ChaosBanner.svelte";
 
   type GameTab = "mission" | "leaderboard";
 
@@ -19,7 +18,6 @@
     oncomplete,
     onrefresh,
     ontabchange,
-    chaosState = null,
   }: {
     game: Game;
     players: Player[];
@@ -31,7 +29,6 @@
     oncomplete: () => void;
     onrefresh: () => void;
     ontabchange: (tab: GameTab) => void;
-    chaosState?: ChaosState | null;
   } = $props();
   const me = $derived(players.find((player) => player.id === playerId));
   const mode = $derived(GAME_MODES[game.mode]);
@@ -48,9 +45,6 @@
     onclick={() => ontabchange("leaderboard")}>Classement</button
   >
 </div>
-{#if game.mode === "chaos" && chaosState}
-  <ChaosBanner state={chaosState} />
-{/if}
 <div class="game-grid play-grid">
   <div class:mobile-hidden={tab !== "mission"}>
     <div class="personal-stats">

@@ -81,14 +81,12 @@ func migrateAndSeed(t *testing.T, pool *pgxpool.Pool, dir string) {
 			t.Fatal(err)
 		}
 	}
-	var secret, treasure, chaosMissions int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE mode='secret_missions'),
-		count(*) FILTER (WHERE mode='treasure_hunt'),count(*) FILTER (WHERE mode='chaos')
-		FROM missions`).Scan(&secret, &treasure, &chaosMissions); err != nil {
+	var secret, treasure int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE mode='secret_missions'), count(*) FILTER (WHERE mode='treasure_hunt') FROM missions`).Scan(&secret, &treasure); err != nil {
 		t.Fatal(err)
 	}
-	if secret != 18 || treasure != 15 || chaosMissions != 15 {
-		t.Fatalf("catalogs: secret=%d treasure=%d chaos=%d", secret, treasure, chaosMissions)
+	if secret != 18 || treasure != 15 {
+		t.Fatalf("catalogs: secret=%d treasure=%d", secret, treasure)
 	}
 }
 
@@ -310,12 +308,6 @@ func assertMissionMode(t *testing.T, pool *pgxpool.Pool, id int, want models.Gam
 func TestGameModesFreshDatabaseAndRollback(t *testing.T) {
 	pool, dir := isolatedDB(t)
 	migrateAndSeed(t, pool, dir)
-	chaosDown, err := os.ReadFile(filepath.Join(dir, "migrations", "005_chaos_mode.down.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustExec(t, pool, string(chaosDown))
-	mustExec(t, pool, `DELETE FROM schema_migrations WHERE version='005_chaos_mode'`)
 	down, err := os.ReadFile(filepath.Join(dir, "migrations", "002_game_modes.down.sql"))
 	if err != nil {
 		t.Fatal(err)
