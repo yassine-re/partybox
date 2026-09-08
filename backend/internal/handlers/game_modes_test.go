@@ -335,3 +335,42 @@ func TestGameModesFreshDatabaseAndRollback(t *testing.T) {
 		t.Fatal("rollback must refuse to delete Treasure Hunt history")
 	}
 }
+
+func TestAIMigrationRollbackAfterMissionAssignment(t *testing.T) {
+	pool, dir := isolatedDB(t)
+	migrateAndSeed(t, pool, dir)
+	ctx := context.Background()
+
+	var gameID, playerID string
+	if err := pool.QueryRow(ctx, `INSERT INTO games(id,box_id,name,mode,status)
+		VALUES(gen_random_uuid(),'PB001','Rollback IA','secret_missions','playing') RETURNING id`).Scan(&gameID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO players(id,game_id,name,token_hash,is_host)
+		VALUES(gen_random_uuid(),$1,'Host rollback','rollback-token',true) RETURNING id`, gameID).Scan(&playerID); err != nil {
+		t.Fatal(err)
+	}
+	var missionID int
+	if err := pool.QueryRow(ctx, `INSERT INTO missions(text,points,category,difficulty,mode,source,game_id)
+		VALUES('Mission IA à supprimer',10,'test',1,'secret_missions','ai',$1) RETURNING id`, gameID).Scan(&missionID); err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, pool, `INSERT INTO player_missions(id,player_id,mission_id,status)
+		VALUES(gen_random_uuid(),$1,$2,'assigned')`, playerID, missionID)
+
+	down, err := os.ReadFile(filepath.Join(dir, "migrations", "004_ai_missions.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("004 rollback failed with an assigned AI mission: %v", err)
+	}
+	var columns int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns
+		WHERE table_schema=current_schema() AND table_name='missions' AND column_name IN ('source','game_id')`).Scan(&columns); err != nil {
+		t.Fatal(err)
+	}
+	if columns != 0 {
+		t.Fatalf("004 rollback left %d AI columns", columns)
+	}
+}

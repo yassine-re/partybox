@@ -68,3 +68,16 @@ export interface Completion {
   player: Player;
   mission: Mission | null;
 }
+
+export interface AIStatus {
+  available: boolean;
+  count: number;
+  remaining_generations: number;
+}
+
+export interface AIGenerationOptions {
+  vibe: "chill" | "fun" | "chaos";
+  intensity: number;
+  context?: string;
+  count?: number;
+}
