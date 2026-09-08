@@ -5,6 +5,7 @@ type GameMode string
 const (
 	ModeSecretMissions GameMode = "secret_missions"
 	ModeTreasureHunt   GameMode = "treasure_hunt"
+	ModeChaos          GameMode = "chaos"
 )
 
 type ModeDefinition struct {
@@ -16,6 +17,7 @@ type ModeDefinition struct {
 var gameModes = map[GameMode]ModeDefinition{
 	ModeSecretMissions: {ID: ModeSecretMissions, MinPlayers: 2},
 	ModeTreasureHunt:   {ID: ModeTreasureHunt, MinPlayers: 2},
+	ModeChaos:          {ID: ModeChaos, MinPlayers: 2},
 }
 
 func LookupGameMode(mode GameMode) (ModeDefinition, bool) {

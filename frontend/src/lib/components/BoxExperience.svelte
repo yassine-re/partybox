@@ -11,6 +11,7 @@
   import { GameRealtime, type RealtimeStatus } from "$lib/realtime";
   import type {
     Box,
+    ChaosState,
     Game,
     GameMode,
     Mission,
@@ -29,6 +30,7 @@
   let playerId = $state("");
   let game = $state<Game | null>(null);
   let mission = $state<Mission | null>(null);
+  let chaosState = $state<ChaosState | null>(null);
   let nickname = $state("");
   let loading = $state(true);
   let busy = $state(false);
@@ -97,9 +99,14 @@
         nextGame.status === "playing"
           ? (await api.mission(current.token)).mission
           : null;
+      const nextChaosState =
+        nextGame.mode === "chaos"
+          ? await api.chaos(current.gameId, current.token)
+          : null;
       if (disposed) return;
       game = nextGame;
       mission = nextMission;
+      chaosState = nextChaosState;
     } else {
       const nextBox = await api.box(boxId);
       if (disposed) return;
@@ -141,6 +148,7 @@
         game = null;
         playerId = "";
         mission = null;
+        chaosState = null;
         notice =
           "Ta précédente session n’est plus disponible. Tu peux rejoindre à nouveau.";
         try {
@@ -278,6 +286,7 @@
       session = null;
       game = null;
       mission = null;
+      chaosState = null;
       playerId = "";
       confirmEnd = false;
     });
@@ -338,6 +347,7 @@
       {busy}
       {realtimeStatus}
       {tab}
+      {chaosState}
       oncomplete={complete}
       onrefresh={() => void sync()}
       ontabchange={(nextTab) => (tab = nextTab)}
