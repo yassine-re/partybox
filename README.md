@@ -1,6 +1,6 @@
 # PartyBox
 
-PartyBox transforme une soirée IRL en jeu de missions secrètes. Un tag NFC passif dans le boîtier ouvre une URL comme `https://partybox.example.com/box/PB001`. Chaque joueur utilise son téléphone ; Go et PostgreSQL centralisent les parties, missions et scores sur un serveur.
+PartyBox transforme une soirée IRL en jeu de missions secrètes ou de chasse au trésor. Un tag NFC passif dans le boîtier ouvre une URL comme `https://partybox.example.com/box/PB001`. Chaque joueur utilise son téléphone ; Go et PostgreSQL centralisent les parties, missions, scores et événements métier sur un serveur.
 
 Ce dépôt contient le premier MVP logiciel : création de partie, lobby partagé, démarrage par l’hôte, missions privées, validation virtuelle, points, nouvelle mission et classement final. Le firmware et le machine learning ont uniquement leur emplacement préparé.
 
@@ -17,7 +17,7 @@ docker compose up --build
 
 Ouvrir **[http://localhost:3000/box/PB001](http://localhost:3000/box/PB001)**.
 
-Compose attend PostgreSQL, applique les migrations, exécute le seed idempotent, puis démarre l’API et le frontend. La box `PB001` et **18 missions** sont créées automatiquement. Aucune partie ni joueur de démonstration n’est créé.
+Compose attend PostgreSQL, applique les migrations, exécute le seed idempotent, puis démarre l’API et le frontend. La box `PB001`, **18 missions secrètes** et **15 défis de chasse au trésor** sont créés automatiquement. Aucune partie ni joueur de démonstration n’est créé.
 
 Pour lancer en arrière-plan, suivre les logs ou arrêter :
 
@@ -63,18 +63,19 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── cmd/api/main.go          # Serveur et commandes migrate / seed
 │   ├── internal/
 │   │   ├── database/            # Pool, exécution des migrations et du seed
-│   │   ├── handlers/            # Routes Gin, auth Bearer, JSON et erreurs
+│   │   ├── handlers/            # Composition HTTP + routes boxes/games/players/realtime
 │   │   ├── realtime/            # Tickets courts, hub par partie et clients WebSocket
 │   │   ├── services/            # Identités et cycle de vie d’une partie
-│   │   ├── repositories/        # SQL PostgreSQL et transactions
-│   │   └── models/              # Types métier / réponses JSON
+│   │   ├── repositories/        # SQL, transactions et journal d’événements
+│   │   └── models/              # Types métier, réponses JSON et GameEvent persistant
 │   ├── Dockerfile
 │   ├── go.mod
 │   └── go.sum
 ├── frontend/
 │   ├── src/lib/api/             # Client fetch, types et sessions locales
 │   ├── src/lib/realtime/        # Connexion, backoff et notifications entrantes
-│   ├── src/lib/components/      # Entrée, jeu, mission et liste/classement
+│   ├── src/lib/components/      # Orchestration de l’expérience et composants partagés
+│   │   └── game/                # En-tête, lobby, jeu et résultats finaux
 │   ├── src/routes/
 │   │   ├── +page.svelte         # Accueil et saisie d’un code box
 │   │   ├── box/[boxId]/         # Entrée → lobby → jeu → fin
@@ -86,6 +87,8 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   └── package-lock.json
 ├── database/
 │   ├── migrations/001_initial.{up,down}.sql
+│   ├── migrations/002_game_modes.{up,down}.sql
+│   ├── migrations/003_game_events.{up,down}.sql
 │   └── seed.sql
 ├── firmware/
 │   ├── platformio.ini
@@ -157,7 +160,7 @@ docker compose run --rm seed
 
 `migrate` applique les fichiers `*.up.sql` par ordre lexical et inscrit leurs versions dans `schema_migrations`. Les migrations et le suivi des versions partagent une transaction ; un verrou évite deux exécutions simultanées. Ajouter une nouvelle migration numérotée plutôt que modifier une migration déjà appliquée.
 
-Le seed insère `PB001` et 18 missions avec points, catégorie et difficulté (1 à 3), sans dupliquer les lignes ni remplacer les données existantes. Les missions déjà jouées sont évitées tant qu’il reste des missions inédites ; après épuisement du catalogue, la moins récemment attribuée revient.
+Le seed insère `PB001`, 18 missions secrètes et 15 défis de chasse au trésor avec points, catégorie et difficulté (1 à 3), sans dupliquer les lignes ni remplacer les données existantes. Les missions déjà jouées sont évitées tant qu’il reste des missions inédites dans le mode choisi ; après épuisement du catalogue, la moins récemment attribuée revient.
 
 Le fichier `.down.sql` est fourni pour un retour arrière manuel. Le binaire n’exécute pas de rollback automatique. Un rollback du schéma initial supprime les parties et leurs données : arrêter les services applicatifs et sauvegarder la base avant toute intervention de ce type.
 
@@ -209,7 +212,7 @@ Toutes les réponses applicatives sont JSON. Les routes privées exigent `Author
 | --- | --- | --- |
 | `GET /api/health` | Public | État de l’API et connexion à PostgreSQL |
 | `GET /api/boxes/:boxId` | Public | Box et `active_game` ou `null` |
-| `POST /api/boxes/:boxId/games` | Public | `{ "name": "La soirée", "player_name": "Alice" }` → session hôte |
+| `POST /api/boxes/:boxId/games` | Public | `{ "name": "La soirée", "player_name": "Alice", "mode": "secret_missions" }` → session hôte |
 | `POST /api/games/:gameId/join` | Public | `{ "name": "Bob" }` → session joueur |
 | `GET /api/games/:gameId` | Joueur de la partie | Statut, dates et joueurs avec scores |
 | `POST /api/games/:gameId/start` | Hôte | `{}` ; au moins deux joueurs |
@@ -238,6 +241,14 @@ Cette couche est volontairement locale au processus Go : une seule instance back
 
 Le serveur Node relaie l’upgrade de `/api/games/:gameId/ws` vers Go et Vite fait de même en développement. Caddy relaie nativement les WebSockets avec `reverse_proxy`, donc aucune configuration d’upgrade spécifique n’est nécessaire.
 
+### Journal d’événements métier persistant
+
+La migration `003_game_events` ajoute la table interne `game_events` : UUID, partie obligatoire, joueur optionnel, type, payload JSON et date de création. Les index `(game_id, created_at)` et `type` couvrent la lecture chronologique d’une partie et les futures analyses par catégorie. La suppression d’une partie efface son historique ; la suppression d’un joueur conserve les événements avec un `player_id` nul.
+
+Ce journal PostgreSQL est distinct des notifications WebSocket : `models.GameEvent` conserve un historique pour le debug, l’analytics et de futurs traitements, tandis que `realtime.Event` reste un signal éphémère demandant au navigateur de relire REST. Aucune API publique n’expose actuellement `game_events`.
+
+Les mutations existantes enregistrent `player_joined`, `game_started`, `mission_completed` et `game_ended`. La validation stocke aussi `assignment_id` et `points` dans son payload. Chaque événement est écrit dans la même transaction que l’arrivée, le changement de statut ou la validation correspondante ; un retry réussi mais déjà traité ne crée donc pas de doublon. La constante générique `mission_assigned` est réservée, mais cet événement n’est pas encore écrit afin de ne pas complexifier le mécanisme d’attribution actuel.
+
 ### Identité et cohérence
 
 - Token opaque de **32 octets aléatoires**, généré avec `crypto/rand`, encodé en base64url ; seul son **hash SHA-256** est conservé dans `players.token_hash`.
@@ -245,8 +256,8 @@ Le serveur Node relaie l’upgrade de `/api/games/:gameId/ws` vers Go et Vite fa
 - Un pseudo est limité à 24 caractères, un nom de partie à 60 ; les pseudos sont uniques dans une partie, sans tenir compte de la casse. Les caractères de contrôle sont refusés.
 - L’hôte est désigné par `players.is_host`, avec un index unique partiel. Aucun `host_player_id` redondant n’est nécessaire.
 - Une seule partie active par box et une seule mission courante par joueur sont garanties par des index SQL.
-- Création et entrée sont transactionnelles. Démarrage, validation, entrée et fin verrouillent la partie concernée pour sérialiser les changements.
-- La validation, les points et la nouvelle attribution sont atomiques. Répéter le même `assignment_id` ne donne aucun point supplémentaire. Le client ne choisit jamais le score accordé.
+- Création et entrée sont transactionnelles. Démarrage, validation, entrée et fin verrouillent la partie concernée pour sérialiser les changements ; leur événement métier est enregistré dans la même transaction.
+- La validation, les points, la nouvelle attribution et l’événement persistant sont atomiques. Répéter le même `assignment_id` ne donne aucun point supplémentaire et ne duplique pas l’événement. Le client ne choisit jamais le score accordé.
 - Un joueur peut rejoindre une partie déjà commencée : il reçoit aussitôt une mission. Une partie terminée refuse les nouveaux joueurs et toute nouvelle validation.
 - Les missions des autres joueurs ne sont pas exposées par l’API. Les égalités de score sont affichées au même rang ; l’ordre visuel est stabilisé par la date d’arrivée puis l’identifiant.
 
@@ -278,7 +289,7 @@ Ouvrir `http://localhost:5173/box/PB001`. Pour utiliser PostgreSQL depuis Compos
 
 ### Vérifications et tests
 
-Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket pour l’autorisation, le refus inter-partie, la diffusion à plusieurs clients d’une même partie, l’isolation entre parties et la déconnexion propre.
+Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket pour l’autorisation, le refus inter-partie, la diffusion à plusieurs clients d’une même partie, l’isolation entre parties et la déconnexion propre. Les tests d’intégration PostgreSQL utilisent un schéma isolé et couvrent les deux modes, les migrations sur base vierge et `001 + 002 → 003`, ainsi que les quatre événements métier persistés et leur idempotence.
 
 ```sh
 cd backend
@@ -291,7 +302,7 @@ npm run check
 npm run build
 ```
 
-Depuis la racine : `docker compose config --quiet` et `docker compose up --build`. Les healthchecks Compose vérifient la disponibilité des services. Le parcours création → arrivée d’un second joueur → démarrage → validation → fin a également été exécuté avec deux contextes Chromium isolés, en vérifiant l’absence de polling REST pendant une période connectée.
+Depuis la racine : `docker compose config --quiet` et `docker compose up --build`. Les healthchecks Compose vérifient la disponibilité des services. Les parcours création → arrivée d’un second joueur → démarrage → validation → classement → fin sont vérifiables pour `secret_missions` et `treasure_hunt`, avec les quatre notifications WebSocket associées.
 
 ## VPS Linux et Caddy
 

@@ -20,6 +20,7 @@ import (
 	"partybox/backend/internal/database"
 	"partybox/backend/internal/handlers"
 	"partybox/backend/internal/models"
+	"partybox/backend/internal/realtime"
 	"partybox/backend/internal/repositories"
 	"partybox/backend/internal/services"
 )
@@ -135,10 +136,30 @@ func TestGameModesOnExistingDatabase(t *testing.T) {
 	mustExec(t, pool, `INSERT INTO players(id,game_id,name,score,is_host,token_hash) VALUES('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Hôte historique',10,true,$1)`, services.TokenHash(legacyToken))
 	mustExec(t, pool, `INSERT INTO player_missions(id,player_id,mission_id,status,completed_at) VALUES('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002',1,'completed',now());
 		INSERT INTO player_missions(id,player_id,mission_id) VALUES('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002',1);`)
+	gameModesMigration, err := os.ReadFile(filepath.Join(dir, "migrations", "002_game_modes.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(legacyDir, "002_game_modes.up.sql"), gameModesMigration, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.Migrate(ctx, pool, legacyDir); err != nil {
+		t.Fatal(err)
+	}
+	var appliedBeforeEvents int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&appliedBeforeEvents); err != nil {
+		t.Fatal(err)
+	}
+	if appliedBeforeEvents != 2 {
+		t.Fatalf("got %d migrations before 003, want 2", appliedBeforeEvents)
+	}
 	migrateAndSeed(t, pool, dir)
 	gin.SetMode(gin.TestMode)
-	router := handlers.Router(&services.Service{Repo: &repositories.Repository{Pool: pool}}, "http://localhost:3000")
-	t.Run("legacy_session_and_assignment_survive_001_to_002", func(t *testing.T) {
+	service := &services.Service{Repo: &repositories.Repository{Pool: pool}}
+	realtimeServer := realtime.NewServer("http://localhost:3000", service.AuthorizeRealtime)
+	t.Cleanup(realtimeServer.Close)
+	router := handlers.Router(service, realtimeServer, "http://localhost:3000")
+	t.Run("legacy_session_and_assignment_survive_001_002_to_003", func(t *testing.T) {
 		p := request[models.Player](t, router, "GET", "/api/players/me", legacyToken, nil, 200)
 		if p.Name != "Hôte historique" || p.Score != 10 || p.CompletedMissions != 1 {
 			t.Fatalf("legacy player changed: %+v", p)

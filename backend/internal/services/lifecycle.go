@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"partybox/backend/internal/models"
 	"partybox/backend/internal/repositories"
@@ -40,9 +41,14 @@ func (s *Service) join(ctx context.Context, gameID, name, hash string) (models.S
 			return err
 		}
 		if g.Status == "playing" {
-			return tx.AssignMission(ctx, result.Player.ID)
+			if err = tx.AssignMission(ctx, result.Player.ID); err != nil {
+				return err
+			}
 		}
-		return nil
+		playerID := result.Player.ID
+		return tx.RecordGameEvent(ctx, &models.GameEvent{
+			GameID: gameID, PlayerID: &playerID, Type: models.GameEventPlayerJoined,
+		})
 	})
 	return result, err
 }
@@ -82,7 +88,17 @@ func (s *Service) transition(ctx context.Context, gameID string, p models.Player
 		} else if g.Status != "playing" && g.Status != "lobby" {
 			return models.ErrConflict
 		}
-		return tx.SetGameStatus(ctx, gameID, target)
+		if err = tx.SetGameStatus(ctx, gameID, target); err != nil {
+			return err
+		}
+		eventType := models.GameEventGameEnded
+		if target == "playing" {
+			eventType = models.GameEventGameStarted
+		}
+		playerID := p.ID
+		return tx.RecordGameEvent(ctx, &models.GameEvent{
+			GameID: gameID, PlayerID: &playerID, Type: eventType,
+		})
 	})
 }
 
@@ -112,6 +128,20 @@ func (s *Service) complete(ctx context.Context, p models.Player, assignmentID st
 				return err
 			}
 			if err = tx.AssignMission(ctx, p.ID); err != nil {
+				return err
+			}
+			payload, marshalErr := json.Marshal(struct {
+				AssignmentID string `json:"assignment_id"`
+				Points       int    `json:"points"`
+			}{AssignmentID: assignmentID, Points: points})
+			if marshalErr != nil {
+				return marshalErr
+			}
+			playerID := p.ID
+			if err = tx.RecordGameEvent(ctx, &models.GameEvent{
+				GameID: p.GameID, PlayerID: &playerID,
+				Type: models.GameEventMissionCompleted, Payload: payload,
+			}); err != nil {
 				return err
 			}
 			result.AwardedPoints = points

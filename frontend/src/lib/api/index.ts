@@ -1,16 +1,13 @@
 import { env } from "$env/dynamic/public";
-<<<<<<< HEAD
 import type {
   Box,
   Completion,
   Game,
+  GameMode,
   Mission,
   Player,
   Session,
 } from "./types";
-=======
-import type { Box, Completion, Game, GameMode, Mission, Player, Session } from "./types";
->>>>>>> b0e269e (feat: add treasure hunt game mode and multi-mode architecture)
 
 export class ApiError extends Error {
   constructor(

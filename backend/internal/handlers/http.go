@@ -14,7 +14,13 @@ import (
 	"partybox/backend/internal/services"
 )
 
+type Handler struct {
+	Service  *services.Service
+	Realtime *realtime.Server
+}
+
 func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.Engine {
+	h := &Handler{Service: s, Realtime: rt}
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 	_ = r.SetTrustedProxies(nil)
@@ -43,137 +49,38 @@ func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.E
 		c.Next()
 	})
 	r.GET("/api/health", func(c *gin.Context) {
-		if err := s.Repo.Pool.Ping(c.Request.Context()); err != nil {
+		if err := h.Service.Repo.Pool.Ping(c.Request.Context()); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
-	r.GET("/api/boxes/:boxId", func(c *gin.Context) {
-		b, err := s.Repo.Box(c.Request.Context(), c.Param("boxId"))
-		respond(c, b, err, http.StatusOK)
-	})
-	r.POST("/api/boxes/:boxId/games", func(c *gin.Context) {
-		var body struct {
-			Name       string          `json:"name"`
-			PlayerName string          `json:"player_name"`
-			Mode       models.GameMode `json:"mode"`
-		}
-		body.Mode = models.ModeSecretMissions // Preserve clients that omit mode.
-		if !bind(c, &body) {
-			return
-		}
-		session, err := s.Create(c.Request.Context(), c.Param("boxId"), body.Name, body.PlayerName, body.Mode)
-		respond(c, session, err, http.StatusCreated)
-	})
-	r.POST("/api/games/:gameId/join", func(c *gin.Context) {
-		var body struct {
-			Name string `json:"name"`
-		}
-		if !bind(c, &body) {
-			return
-		}
-		session, err := s.Join(c.Request.Context(), c.Param("gameId"), body.Name)
-		if err == nil {
-			rt.Broadcast(realtime.NewEvent(realtime.EventPlayerJoined, session.Game.ID, session.Player.ID))
-		}
-		respond(c, session, err, http.StatusCreated)
-	})
-	// Reserved contract only: no simulated hardware validation or unauthenticated effect.
-	r.POST("/api/boxes/:boxId/events", func(c *gin.Context) {
-		var body struct {
-			Type string `json:"type"`
-		}
-		if !bind(c, &body) {
-			return
-		}
-		if body.Type != "button_press" {
-			respond(c, nil, models.ErrInvalid, 0)
-			return
-		}
-		c.JSON(http.StatusNotImplemented, gin.H{"error": gin.H{"code": "not_implemented", "message": "Événements ESP32 prévus pour une prochaine version."}})
-	})
+	public := r.Group("/api")
 	auth := r.Group("/api")
-	auth.Use(func(c *gin.Context) {
-		header := c.GetHeader("Authorization")
-		if !strings.HasPrefix(header, "Bearer ") {
-			respond(c, nil, models.ErrUnauthorized, 0)
-			c.Abort()
-			return
-		}
-		p, err := s.Authenticate(c.Request.Context(), strings.TrimPrefix(header, "Bearer "))
-		if err != nil {
-			respond(c, nil, err, 0)
-			c.Abort()
-			return
-		}
-		c.Set("player", p)
-		c.Next()
-	})
-	auth.GET("/players/me", func(c *gin.Context) { c.JSON(http.StatusOK, currentPlayer(c)) })
-	auth.GET("/players/me/mission", func(c *gin.Context) {
-		mission, err := s.Repo.Mission(c.Request.Context(), currentPlayer(c))
-		respond(c, gin.H{"mission": mission}, err, http.StatusOK)
-	})
-	auth.POST("/players/me/mission/complete", func(c *gin.Context) {
-		var body struct {
-			AssignmentID string `json:"assignment_id"`
-		}
-		if !bind(c, &body) {
-			return
-		}
-		player := currentPlayer(c)
-		result, err := s.Complete(c.Request.Context(), player, body.AssignmentID)
-		if err == nil && !result.AlreadyCompleted {
-			rt.Broadcast(realtime.NewEvent(realtime.EventMissionCompleted, player.GameID, player.ID))
-		}
-		respond(c, result, err, http.StatusOK)
-	})
-	auth.GET("/games/:gameId", func(c *gin.Context) {
-		g, err := s.Game(c.Request.Context(), c.Param("gameId"), currentPlayer(c))
-		respond(c, g, err, http.StatusOK)
-	})
-	auth.GET("/games/:gameId/leaderboard", func(c *gin.Context) {
-		g, err := s.Game(c.Request.Context(), c.Param("gameId"), currentPlayer(c))
-		respond(c, gin.H{"players": g.Players}, err, http.StatusOK)
-	})
-	auth.POST("/games/:gameId/start", func(c *gin.Context) {
-		gameID := c.Param("gameId")
-		err := s.Start(c.Request.Context(), gameID, currentPlayer(c))
-		if err == nil {
-			rt.Broadcast(realtime.NewEvent(realtime.EventGameStarted, gameID, ""))
-		}
-		respond(c, gin.H{"status": "playing"}, err, http.StatusOK)
-	})
-	auth.POST("/games/:gameId/end", func(c *gin.Context) {
-		gameID := c.Param("gameId")
-		err := s.End(c.Request.Context(), gameID, currentPlayer(c))
-		if err == nil {
-			rt.Broadcast(realtime.NewEvent(realtime.EventGameEnded, gameID, ""))
-		}
-		respond(c, gin.H{"status": "ended"}, err, http.StatusOK)
-	})
-	auth.POST("/games/:gameId/ws-ticket", func(c *gin.Context) {
-		player := currentPlayer(c)
-		gameID := c.Param("gameId")
-		if player.GameID != gameID {
-			respond(c, nil, models.ErrForbidden, 0)
-			return
-		}
-		ticket, expiresAt, err := rt.IssueTicket(player.ID, gameID)
-		respond(c, gin.H{"ticket": ticket, "expires_at": expiresAt}, err, http.StatusCreated)
-	})
-	r.GET("/api/games/:gameId/ws", func(c *gin.Context) {
-		rt.ServeHTTP(c.Writer, c.Request, c.Param("gameId"))
-	})
+	auth.Use(h.authenticate)
+	h.registerBoxRoutes(public)
+	h.registerGameRoutes(public, auth)
+	h.registerPlayerRoutes(auth)
+	h.registerRealtimeRoutes(public, auth)
 	r.NoRoute(func(c *gin.Context) { respond(c, nil, models.ErrNotFound, 0) })
 	return r
 }
 
-func isWebSocketRequest(request *http.Request) bool {
-	return request.Method == http.MethodGet &&
-		strings.HasPrefix(request.URL.Path, "/api/games/") &&
-		strings.HasSuffix(request.URL.Path, "/ws")
+func (h *Handler) authenticate(c *gin.Context) {
+	header := c.GetHeader("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
+		respond(c, nil, models.ErrUnauthorized, 0)
+		c.Abort()
+		return
+	}
+	p, err := h.Service.Authenticate(c.Request.Context(), strings.TrimPrefix(header, "Bearer "))
+	if err != nil {
+		respond(c, nil, err, 0)
+		c.Abort()
+		return
+	}
+	c.Set("player", p)
+	c.Next()
 }
 
 func currentPlayer(c *gin.Context) models.Player { return c.MustGet("player").(models.Player) }

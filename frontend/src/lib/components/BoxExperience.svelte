@@ -18,8 +18,10 @@
     Session,
   } from "$lib/api/types";
   import EntryForm from "./EntryForm.svelte";
-  import MissionCard from "./MissionCard.svelte";
-  import PlayerList from "./PlayerList.svelte";
+  import FinalResults from "./game/FinalResults.svelte";
+  import GameHeader from "./game/GameHeader.svelte";
+  import LobbyView from "./game/LobbyView.svelte";
+  import PlayingView from "./game/PlayingView.svelte";
 
   let { boxId }: { boxId: string } = $props();
   let box = $state<Box | null>(null);
@@ -45,9 +47,6 @@
   const players = $derived(game?.players ?? []);
   const mode = $derived(GAME_MODES[game?.mode ?? DEFAULT_GAME_MODE]);
   const me = $derived(players.find((p) => p.id === playerId));
-  const winners = $derived(
-    players.filter((p) => p.score === players[0]?.score),
-  );
 
   function showError(err: unknown) {
     error = err instanceof Error ? err.message : "Une erreur est survenue.";
@@ -319,148 +318,32 @@
 {:else if !game && box}
   <EntryForm {box} {nickname} {busy} onsubmit={enter} />
 {:else if game}
-  <div class="game-heading">
-    <div>
-      <div class="eyebrow">
-        <a href="/">ACCUEIL</a><span>/</span> BOX {boxId}<span>/</span> {mode.label.toUpperCase()}
-      </div>
-      <h1>{game.name}<span class="accent">.</span></h1>
-    </div>
-    <span class="status-pill"
-      ><span class="live-dot" aria-hidden="true"></span>{game.status === "lobby"
-        ? "LOBBY OUVERT"
-        : game.status === "playing"
-          ? "ÇA JOUE"
-          : "PARTIE TERMINÉE"}</span
-    >
-  </div>
+  <GameHeader {boxId} {game} />
 
   {#if game.status === "lobby"}
-    <div class="game-grid">
-      <section class="lobby-feature">
-        <span class="eyebrow">TOUT COMMENCE ICI</span>
-        <div class="lobby-star" aria-hidden="true">{mode.symbol}</div>
-        <h2>Réunis<br />ta bande<span class="accent">.</span></h2>
-        <p>
-          {mode.lobbyDescription}
-        </p>
-        <button class="button outline" onclick={share}
-          >Copier le lien d’invitation <span aria-hidden="true">↗</span></button
-        >
-        <p class="form-hint">Le même lien pour tous. Ou un simple scan NFC.</p>
-      </section>
-      <section class="panel">
-        <div class="section-heading">
-          <h2>Dans la place</h2>
-          <span class="count-badge">{players.length}</span>
-        </div>
-        <PlayerList {players} me={playerId} />
-        {#if me?.is_host}<button
-            class="button primary"
-            disabled={busy || players.length < mode.minPlayers}
-            onclick={start}
-            >{busy ? "Lancement…" : "Lancer la partie"}<span aria-hidden="true"
-              >▶</span
-            ></button
-          >
-          <p class="form-hint">
-            {players.length < mode.minPlayers
-              ? "Encore un ami et la soirée peut commencer."
-              : mode.startHint}
-          </p>{:else}<div class="waiting-notice">
-            <span class="live-dot" aria-hidden="true"></span>En attendant que
-            l’hôte lance la partie…
-          </div>{/if}
-      </section>
-    </div>
+    <LobbyView
+      {game}
+      {players}
+      {playerId}
+      {busy}
+      onshare={share}
+      onstart={start}
+    />
   {:else if game.status === "playing"}
-    <div class="mobile-tabs" aria-label="Affichage du jeu">
-      <button
-        class:active={tab === "mission"}
-        aria-pressed={tab === "mission"}
-        onclick={() => (tab = "mission")}>{mode.tabLabel}</button
-      ><button
-        class:active={tab === "leaderboard"}
-        aria-pressed={tab === "leaderboard"}
-        onclick={() => (tab = "leaderboard")}>Classement</button
-      >
-    </div>
-    <div class="game-grid play-grid">
-      <div class:mobile-hidden={tab !== "mission"}>
-        <div class="personal-stats">
-          <span>SALUT, <strong>{me?.name ?? mode.playerLabel}</strong></span><span
-            ><strong>{me?.score ?? 0}</strong> PTS
-            <span class="stat-divider">/</span>
-            {me?.completed_missions ?? 0} {mode.statsLabel}</span
-          >
-        </div>
-        {#if mission}<MissionCard
-            {mission}
-            mode={game.mode}
-            {busy}
-            oncomplete={complete}
-          />{:else}<section class="panel">
-            <h2>{mode.loadingText}</h2>
-            <button class="button outline" onclick={() => void sync()}
-              >Actualiser</button
-            >
-          </section>{/if}
-      </div>
-      <section
-        class="panel leaderboard-panel"
-        class:mobile-hidden={tab !== "leaderboard"}
-      >
-        <div class="section-heading">
-          <h2>Le classement</h2>
-          <span class="mini-label realtime-label">
-            <span
-              class:reconnecting={realtimeStatus !== "connected"}
-              class="live-dot"
-              aria-hidden="true"
-            ></span>{realtimeStatus === "connected"
-              ? "EN DIRECT"
-              : "RECONNEXION…"}
-          </span>
-        </div>
-        <PlayerList {players} mode={game.mode} me={playerId} ranked />
-        <p class="form-hint">
-          {realtimeStatus === "connected"
-            ? "Classement synchronisé en temps réel."
-            : "Actualisation de secours pendant la reconnexion."}
-        </p>
-      </section>
-    </div>
+    <PlayingView
+      {game}
+      {players}
+      {playerId}
+      {mission}
+      {busy}
+      {realtimeStatus}
+      {tab}
+      oncomplete={complete}
+      onrefresh={() => void sync()}
+      ontabchange={(nextTab) => (tab = nextTab)}
+    />
   {:else}
-    <div class="final-layout">
-      <section class="final-feature">
-        <div class="eyebrow">{mode.finalEyebrow}</div>
-        <span class="final-trophy" aria-hidden="true">✳</span>
-        <h2>
-          Bien joué,<br /><em>{winners.map((p) => p.name).join(" & ")}.</em>
-        </h2>
-        <p>
-          {winners.length > 1
-            ? "La victoire se partage ce soir."
-            : "La soirée a son champion."}
-          {players.reduce((sum, p) => sum + p.completed_missions, 0)} {mode.completedPlural}
-          ensemble.
-        </p>
-        <div class="final-score">
-          {players[0]?.score ?? 0}<span>POINTS AU SOMMET</span>
-        </div>
-        <button class="button primary" onclick={backToBox} disabled={busy}
-          >Revenir à l’accueil de la box <span aria-hidden="true">↗</span
-          ></button
-        >
-      </section>
-      <section class="panel">
-        <div class="section-heading">
-          <h2>Le dernier mot</h2>
-          <span class="mini-label">CLASSEMENT FINAL</span>
-        </div>
-        <PlayerList {players} me={playerId} mode={game.mode} ranked />
-      </section>
-    </div>
+    <FinalResults {game} {players} {playerId} {busy} onback={backToBox} />
   {/if}
 
   <div class="game-bottom">
