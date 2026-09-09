@@ -9,7 +9,8 @@
     "preview": "vite preview --host 0.0.0.0",
     "start": "node build",
     "prepare": "svelte-kit sync",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "node --test src/lib/feedback.test.mjs"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "5.5.7",

@@ -33,7 +33,7 @@ func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.E
 			c.Header("Access-Control-Allow-Origin", frontendURL)
 			c.Header("Vary", "Origin")
 			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type")
-			c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 		}
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
@@ -77,6 +77,7 @@ func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.E
 	h.registerBoxRoutes(public)
 	h.registerGameRoutes(public, auth)
 	h.registerPlayerRoutes(auth)
+	h.registerFeedbackRoutes(auth)
 	h.registerRealtimeRoutes(public, auth)
 	h.registerChaosRoutes(auth)
 	h.registerAIRoutes(auth)

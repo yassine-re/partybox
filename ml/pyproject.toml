@@ -1,6 +1,9 @@
 [project]
 name = "partybox-ml"
 version = "0.0.0"
-description = "Emplacement réservé au futur modèle de recommandation PartyBox"
-requires-python = ">=3.12"
-dependencies = []
+description = "Pipeline d’export du dataset de feedback PartyBox"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2,<4",
+    "psycopg[binary]>=3.2,<4",
+]

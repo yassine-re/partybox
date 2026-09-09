@@ -1,11 +1,20 @@
 <script lang="ts">
-  import type { ChaosState, Game, Mission, Player, ProofResponse, ProofStatus } from "$lib/api/types";
+  import type {
+    ChaosState,
+    Game,
+    Mission,
+    MissionFeedbackRating,
+    Player,
+    ProofResponse,
+    ProofStatus,
+  } from "$lib/api/types";
   import type { RealtimeStatus } from "$lib/realtime";
   import { GAME_MODES } from "$lib/game-modes";
   import MissionCard from "../MissionCard.svelte";
   import PlayerList from "../PlayerList.svelte";
   import ChaosBanner from "./ChaosBanner.svelte";
   import TreasureProof from "./TreasureProof.svelte";
+  import MissionFeedback from "./MissionFeedback.svelte";
 
   type GameTab = "mission" | "leaderboard";
 
@@ -20,6 +29,11 @@
     oncomplete,
     onrefresh,
     ontabchange,
+    feedbackAssignmentId = null,
+    feedbackBusy = false,
+    feedbackError = "",
+    onfeedback,
+    onfeedbackskip,
     chaosState = null,
     proofStatus = null,
     onproofsubmit,
@@ -34,6 +48,11 @@
     oncomplete: () => void;
     onrefresh: () => void;
     ontabchange: (tab: GameTab) => void;
+    feedbackAssignmentId?: string | null;
+    feedbackBusy?: boolean;
+    feedbackError?: string;
+    onfeedback: (rating: MissionFeedbackRating) => void;
+    onfeedbackskip: () => void;
     chaosState?: ChaosState | null;
     proofStatus?: ProofStatus | null;
     onproofsubmit: (id: string, image: Blob) => Promise<ProofResponse>;
@@ -75,6 +94,15 @@
         <h2>{mode.loadingText}</h2>
         <button class="button outline" onclick={onrefresh}>Actualiser</button>
       </section>{/if}
+    {#if feedbackAssignmentId}
+      <MissionFeedback
+        assignmentId={feedbackAssignmentId}
+        busy={feedbackBusy}
+        error={feedbackError}
+        onsubmit={onfeedback}
+        onskip={onfeedbackskip}
+      />
+    {/if}
   </div>
   <section
     class="panel leaderboard-panel"

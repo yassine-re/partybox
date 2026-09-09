@@ -8,6 +8,8 @@ import type {
   Game,
   GameMode,
   Mission,
+  MissionFeedback,
+  MissionFeedbackRating,
   Player,
   ProofResponse,
   ProofStatus,
@@ -28,6 +30,7 @@ async function request<T>(
   token?: string,
   body?: unknown,
   timeoutMs = 12_000,
+  method?: "GET" | "POST" | "PUT",
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -37,7 +40,7 @@ async function request<T>(
     response = await fetch(
       `${(env.PUBLIC_API_URL || "/api").replace(/\/$/, "")}${path}`,
       {
-        method: body === undefined ? "GET" : "POST",
+        method: method ?? (body === undefined ? "GET" : "POST"),
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(timeoutMs),
@@ -107,6 +110,18 @@ export const api = {
     request<Completion>("/players/me/mission/complete", token, {
       assignment_id,
     }),
+  setMissionFeedback: (
+    token: string,
+    assignmentId: string,
+    rating: MissionFeedbackRating,
+  ) =>
+    request<MissionFeedback>(
+      `/players/me/missions/${encodeURIComponent(assignmentId)}/feedback`,
+      token,
+      { rating },
+      undefined,
+      "PUT",
+    ),
   aiGenerateMissions: (
     id: string,
     token: string,

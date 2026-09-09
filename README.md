@@ -52,7 +52,7 @@ PostgreSQL :5432
 - **IA** : `internal/ai` implémente un fournisseur de contenu derrière `MissionGenerator`. OpenAI produit un catalogue JSON structuré ; PartyBox conserve l’attribution, la validation, les scores et le fallback vers le seed.
 - **Communication** : REST reste la source de vérité via `frontend/src/lib/api/`. Un WebSocket authentifié par ticket signale uniquement qu’une ressource a changé, puis le frontend la relit via REST. Le bouton de rafraîchissement et la resynchronisation au retour dans l’onglet sont conservés ; un fallback à 25 secondes ne tourne que lorsque le socket est indisponible.
 - **Réseau** : le navigateur appelle `/api` sur son propre domaine. La passerelle SvelteKit relaie vers `backend` sur le réseau privé Compose. Le frontend est accessible sur le réseau de développement ; PostgreSQL publie uniquement un port local sur `127.0.0.1` pour les explorateurs de base de données. L’API Go ne publie pas de port sur l’hôte.
-- **Persistance** : migrations SQL versionnées, seed idempotent et volume PostgreSQL. Les conteneurs API et frontend tournent avec des utilisateurs sans privilèges.
+- **Persistance** : migrations SQL versionnées, seed idempotent et volume PostgreSQL. Le feedback mission reste lié à son assignment et alimente un export ML hors ligne. Les conteneurs API et frontend tournent avec des utilisateurs sans privilèges.
 
 Le dossier courant est directement la racine PartyBox, même s’il porte un autre nom localement ; aucun sous-dossier `partybox/` supplémentaire n’est nécessaire.
 
@@ -95,12 +95,16 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── migrations/004_ai_missions.{up,down}.sql
 │   ├── migrations/005_chaos_mode.{up,down}.sql
 │   ├── migrations/006_treasure_photo_validation.{up,down}.sql
+│   ├── migrations/007_mission_feedback.{up,down}.sql
 │   └── seed.sql
 ├── firmware/
 │   ├── platformio.ini
 │   ├── src/main.cpp
 │   └── include/
-├── ml/                         # Réservé à Python, aucune implémentation ML
+├── ml/
+│   ├── dataset.py              # Jointures et contrôles qualité
+│   ├── export_dataset.py       # Export CSV et statistiques
+│   └── requirements.txt        # pandas + psycopg
 ├── infra/Caddyfile
 ├── docker-compose.yml
 ├── .env.example
@@ -170,7 +174,7 @@ docker compose run --rm seed
 
 Le seed insère `PB001`, 18 missions secrètes, 15 défis de chasse au trésor et 15 missions Chaos avec points, catégorie et difficulté (1 à 3), sans dupliquer les lignes ni remplacer les données existantes. Les missions déjà jouées sont évitées tant qu’il reste des missions inédites dans le mode choisi ; après épuisement du catalogue, la moins récemment attribuée revient.
 
-Les migrations `004_ai_missions` et `005_chaos_mode` restent séparées afin que les catalogues IA et l’état Chaos puissent évoluer indépendamment.
+Les migrations `004_ai_missions` et `005_chaos_mode` restent séparées afin que les catalogues IA et l’état Chaos puissent évoluer indépendamment. `007_mission_feedback` crée la table de notation ; le numéro `006` est volontairement réservé à la branche de validation photo Treasure Hunt.
 
 Le fichier `.down.sql` est fourni pour un retour arrière manuel. Le binaire n’exécute pas de rollback automatique. Le rollback de `004_ai_missions` supprime les catalogues IA et leurs attributions, car l’ancien schéma ne peut pas représenter des missions propres à une partie. Un rollback du schéma initial supprime les parties et leurs données : arrêter les services applicatifs et sauvegarder la base avant toute intervention de ce type.
 
@@ -185,10 +189,11 @@ Ce parcours sert de vérification manuelle sur deux profils ou appareils distinc
 3. Le lobby affiche les deux joueurs. Seul l’hôte peut démarrer, à partir de deux joueurs.
 4. Démarrer depuis A. Chaque écran affiche sa propre mission, son score et le classement.
 5. Accomplir la mission dans la soirée puis appuyer sur **J’ai réussi**. Le serveur attribue les points prévus et une nouvelle mission.
-6. Le classement de B se rafraîchit quasiment immédiatement via WebSocket. Sur smartphone, l’onglet **Classement** permet de le consulter.
-7. Recharger la page : le token local restaure le même joueur, sa mission et son score.
-8. L’hôte termine la partie via le bouton dédié et sa confirmation. Les deux écrans affichent le classement final et le nombre de missions accomplies.
-9. **Revenir à l’accueil de la box** libère la session locale de cette partie et permet d’en créer ou rejoindre une nouvelle ; le pseudo reste mémorisé.
+6. Après chaque troisième completion réussie, noter facultativement l’ancienne mission avec **Bof**, **Ça va** ou **Fun**, ou choisir **Passer**. La nouvelle mission est déjà disponible.
+7. Le classement de B se rafraîchit quasiment immédiatement via WebSocket. Sur smartphone, l’onglet **Classement** permet de le consulter.
+8. Recharger la page : le token local restaure le même joueur, sa mission et son score.
+9. L’hôte termine la partie via le bouton dédié et sa confirmation. Les deux écrans affichent le classement final et le nombre de missions accomplies.
+10. **Revenir à l’accueil de la box** libère la session locale de cette partie et permet d’en créer ou rejoindre une nouvelle ; le pseudo reste mémorisé.
 
 En mode Chaos, un événement est sélectionné après trois validations globales. `DOUBLE TROUBLE` double les trois validations suivantes, `BOUNTY` ajoute 100 points à la prochaine validation d’une cible choisie côté serveur, et `MISSION SHUFFLE` annule les missions courantes avant d’en attribuer de nouvelles à tout le monde.
 
@@ -235,6 +240,7 @@ Toutes les réponses applicatives sont JSON. Les routes privées exigent `Author
 | `GET /api/players/me`                   | Joueur                    | Identité, score, nombre de missions accomplies                                              |
 | `GET /api/players/me/mission`           | Joueur                    | `{ "mission": ... }` ou `null` avant démarrage                                              |
 | `POST /api/players/me/mission/complete` | Joueur                    | `{ "assignment_id": "<UUID de l’attribution>" }`                                            |
+| `PUT /api/players/me/missions/:assignmentId/feedback` | Propriétaire de l’assignment terminé | `{ "rating": -1 }`, `0` ou `1` ; crée ou remplace l’avis |
 | `GET /api/games/:gameId/leaderboard`    | Joueur de la partie       | `{ "players": [...] }`, par score décroissant                                               |
 | `GET /api/games/:gameId/ai-missions/status` | Joueur de la partie | Disponibilité, taille du catalogue et générations restantes                                  |
 | `POST /api/games/:gameId/ai-missions/generate` | Hôte dans le lobby | Ambiance, intensité, contexte et nombre ; retourne uniquement le total généré                 |
@@ -262,7 +268,7 @@ La migration `003_game_events` ajoute la table interne `game_events` : UUID, par
 
 Ce journal PostgreSQL est distinct des notifications WebSocket : `models.GameEvent` conserve un historique pour le debug, l’analytics et de futurs traitements, tandis que `realtime.Event` reste un signal éphémère demandant au navigateur de relire REST. Aucune API publique n’expose actuellement `game_events`.
 
-Les mutations existantes enregistrent `player_joined`, `game_started`, `mission_completed`, `game_ended` et `ai_missions_generated`. Chaos ajoute `chaos_event_triggered`, `chaos_event_consumed` et `mission_cancelled`. La validation stocke `assignment_id` et le nombre réel de points accordés dans son payload. Chaque événement est écrit dans la même transaction que l’arrivée, le changement de statut, le score ou le changement de mission correspondant ; un retry déjà traité ne crée donc pas de doublon ni de consommation Chaos supplémentaire. L’événement IA conserve uniquement le nombre, le mode, l’ambiance et l’intensité : aucune clé, réponse brute ou contexte libre. La constante générique `mission_assigned` est réservée, mais cet événement n’est pas encore écrit afin de ne pas complexifier le mécanisme d’attribution actuel.
+Les mutations existantes enregistrent `player_joined`, `game_started`, `mission_completed`, `game_ended` et `ai_missions_generated`. Chaos ajoute `chaos_event_triggered`, `chaos_event_consumed` et `mission_cancelled`. Un avis créé ou modifié ajoute `mission_feedback_submitted` avec `assignment_id` et `rating` ; répéter exactement le même avis ne duplique pas l’événement. La validation stocke `assignment_id` et le nombre réel de points accordés dans son payload. Chaque événement est écrit dans la même transaction que sa mutation. L’événement IA conserve uniquement le nombre, le mode, l’ambiance et l’intensité : aucune clé, réponse brute ou contexte libre. La constante générique `mission_assigned` est réservée, mais cet événement n’est pas encore écrit afin de ne pas complexifier le mécanisme d’attribution actuel.
 
 ### Moteur Chaos
 
@@ -360,7 +366,7 @@ Ouvrir `http://localhost:5173/box/PB001`. Pour utiliser PostgreSQL depuis Compos
 
 ### Vérifications et tests
 
-Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket pour l’autorisation, le refus inter-partie, la diffusion à plusieurs clients d’une même partie, l’isolation entre parties et la déconnexion propre. Les tests d’intégration PostgreSQL utilisent un schéma isolé et couvrent les trois modes, les migrations sur base vierge et existante, les migrations `004` et `005`, le rollback IA avec une mission attribuée, les événements métier et l’idempotence. Ils vérifient également l’isolation et la priorité des catalogues IA, leur remplacement atomique, la limite d’utilisation et la concurrence avec Start. OpenAI est toujours simulé, et les scénarios Chaos forcent successivement Double Trouble, Bounty et Mission Shuffle.
+Le package realtime contient des tests avec `httptest` et de vrais clients WebSocket. Les tests d’intégration PostgreSQL utilisent un schéma isolé et couvrent les trois modes, les migrations, les catalogues IA, Chaos et le feedback. Le feedback vérifie la propriété et le statut de l’assignment, les trois notes, les entrées invalides, l’upsert et l’événement métier.
 
 ```sh
 cd backend
@@ -378,8 +384,13 @@ Les tests de preuve photo utilisent un fake `Validator` et un serveur HTTP local
 
 ```sh
 cd frontend
+npm test
 npm run check
 npm run build
+```
+
+```sh
+python -m compileall ml
 ```
 
 Depuis la racine : `docker compose config --quiet` et `docker compose up --build`. Les healthchecks Compose vérifient la disponibilité des services. Les parcours création → arrivée d’un second joueur → démarrage → validation → classement → fin sont vérifiables pour `secret_missions`, `treasure_hunt` et `chaos`, avec les quatre notifications WebSocket associées.
@@ -407,7 +418,7 @@ La box `PB001` reste une référence de développement. Pour provisionner une au
 - Pas de transfert d’hôte, de récupération de token perdu, de révocation, d’expiration automatique ou de nettoyage des anciennes parties. Si l’hôte perd son stockage local pendant une partie, une intervention en base sera nécessaire pour la fermer.
 - Pas de présence connectée/déconnectée : le lobby liste les inscrits. Pas de fonctionnement hors ligne ; une connexion au serveur est nécessaire.
 - Les événements Chaos sont déclenchés par le nombre de validations, sans timer. Ils ne comprennent pour l’instant que Double Trouble, Bounty et Mission Shuffle.
-- Pas encore de PWA installable, service worker, push, compte email/OAuth, galerie de photos, MQTT, Redis ou ML. La structure SvelteKit et les assets statiques permettent d’ajouter une PWA plus tard.
+- Pas encore de PWA installable, service worker, push, compte email/OAuth, galerie de photos, MQTT, Redis ou modèle ML en production. Le pipeline ML actuel exporte uniquement les données notées.
 - Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium ; deux téléphones physiques, le HTTPS public et le firmware n’ont pas été vérifiés sur du matériel réel.
 
 Pour intégrer l’ESP32 ensuite :
