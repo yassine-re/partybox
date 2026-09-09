@@ -113,7 +113,6 @@ func (s *Service) AIMissionsStatus(ctx context.Context, gameID string, p models.
 	if err != nil {
 		return AIStatus{}, err
 	}
-	isAICompatible := g.Mode == models.ModeSecretMissions || g.Mode == models.ModeTreasureHunt
 	count, err := s.Repo.AIMissionsCount(ctx, gameID)
 	if err != nil {
 		return AIStatus{}, err
@@ -128,7 +127,7 @@ func (s *Service) AIMissionsStatus(ctx context.Context, gameID string, p models.
 		remaining = 0
 	}
 	return AIStatus{
-		Available:            s.AI != nil && isAICompatible,
+		Available:            s.AI != nil && models.SupportsAIGeneration(g.Mode),
 		Count:                count,
 		RemainingGenerations: remaining,
 	}, nil
@@ -149,7 +148,7 @@ func (s *Service) GenerateAIMissions(ctx context.Context, gameID string, p model
 	if g.Status != "lobby" {
 		return 0, fmt.Errorf("%w : la génération n’est possible que dans le lobby", models.ErrConflict)
 	}
-	if g.Mode != models.ModeSecretMissions && g.Mode != models.ModeTreasureHunt {
+	if !models.SupportsAIGeneration(g.Mode) {
 		return 0, fmt.Errorf("%w : mode de jeu non compatible avec la génération IA", models.ErrConflict)
 	}
 

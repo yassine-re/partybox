@@ -7,6 +7,7 @@ interface ModePresentation {
   label: string;
   description: string;
   minPlayers: number;
+  supportsAIGeneration: boolean;
   symbol: string;
   number: string;
   heading: readonly [string, string, string];
@@ -34,6 +35,7 @@ export const GAME_MODES = {
     label: "Secret Missions",
     description: "Accomplis discrètement des missions impliquant tes potes sans te faire griller.",
     minPlayers: 2,
+    supportsAIGeneration: true,
     symbol: "✳",
     number: "01",
     heading: ["Ce soir,", "tout le monde", "a un"],
@@ -59,6 +61,7 @@ export const GAME_MODES = {
     label: "Treasure Hunt",
     description: "Trouve des objets autour de toi, valide tes découvertes et accumule des points.",
     minPlayers: 2,
+    supportsAIGeneration: true,
     symbol: "⌖",
     number: "02",
     heading: ["Ce soir,", "le trésor est", "sous tes"],
@@ -84,6 +87,7 @@ export const GAME_MODES = {
     label: "Chaos",
     description: "Accomplis tes missions pendant que la PartyBox change les règles en plein milieu de la partie.",
     minPlayers: 2,
+    supportsAIGeneration: true,
     symbol: "⚡",
     number: "03",
     heading: ["Ce soir,", "les règles", "vont devenir"],
