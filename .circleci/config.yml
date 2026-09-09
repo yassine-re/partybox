@@ -1,0 +1,240 @@
+version: 2.1
+
+jobs:
+  verify-release-tag:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+
+      - run:
+          name: Vérifier que le tag appartient à main
+          command: |
+            set -Eeuo pipefail
+
+            if ! printf '%s' "$CIRCLE_TAG" |
+              grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
+            then
+              echo "Tag invalide : $CIRCLE_TAG"
+              exit 1
+            fi
+
+            git fetch \
+              --no-tags \
+              origin \
+              main:refs/remotes/origin/main
+
+            if ! git merge-base \
+              --is-ancestor \
+              "$CIRCLE_SHA1" \
+              refs/remotes/origin/main
+            then
+              echo "Le commit tagué n'appartient pas à main"
+              exit 1
+            fi
+
+            echo "Tag $CIRCLE_TAG valide"
+
+  test-backend:
+    docker:
+      - image: cimg/go:1.26
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - go-v1-{{ checksum "backend/go.sum" }}
+
+      - run:
+          name: Télécharger les dépendances Go
+          command: |
+            cd backend
+            go mod download
+
+      - save_cache:
+          key: go-v1-{{ checksum "backend/go.sum" }}
+          paths:
+            - /home/circleci/go/pkg/mod
+
+      - run:
+          name: Tests et analyse Go
+          command: |
+            cd backend
+            go test ./...
+            go vet ./...
+
+  test-frontend:
+    docker:
+      - image: cimg/node:24.13
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - npm-v1-{{ checksum "frontend/package-lock.json" }}
+
+      - run:
+          name: Installer les dépendances
+          command: |
+            cd frontend
+            npm ci
+
+      - save_cache:
+          key: npm-v1-{{ checksum "frontend/package-lock.json" }}
+          paths:
+            - /home/circleci/.npm
+
+      - run:
+          name: Tester et construire le frontend
+          command: |
+            cd frontend
+            npm test
+            npm run check
+            npm run build
+
+  build-and-push:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: medium
+    steps:
+      - checkout
+
+      - run:
+          name: Connexion à GHCR
+          command: |
+            echo "$GHCR_TOKEN" |
+              docker login ghcr.io \
+                --username "$GHCR_USERNAME" \
+                --password-stdin
+
+      - run:
+          name: Build des images
+          command: |
+            set -Eeuo pipefail
+
+            backend="ghcr.io/yassine-re/partybox-backend"
+            frontend="ghcr.io/yassine-re/partybox-frontend"
+
+            docker build \
+              --pull \
+              --file backend/Dockerfile \
+              --tag "${backend}:${CIRCLE_TAG}" \
+              --tag "${backend}:sha-${CIRCLE_SHA1}" \
+              .
+
+            docker build \
+              --pull \
+              --file frontend/Dockerfile \
+              --tag "${frontend}:${CIRCLE_TAG}" \
+              --tag "${frontend}:sha-${CIRCLE_SHA1}" \
+              .
+
+      - run:
+          name: Publication dans GHCR
+          command: |
+            set -Eeuo pipefail
+
+            backend="ghcr.io/yassine-re/partybox-backend"
+            frontend="ghcr.io/yassine-re/partybox-frontend"
+
+            docker push "${backend}:${CIRCLE_TAG}"
+            docker push "${backend}:sha-${CIRCLE_SHA1}"
+            docker push "${frontend}:${CIRCLE_TAG}"
+            docker push "${frontend}:sha-${CIRCLE_SHA1}"
+
+  deploy-vps:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+
+      - run:
+          name: Installer sshpass
+          command: |
+            sudo apt-get update
+            sudo apt-get install --yes sshpass
+
+      - run:
+          name: Configurer la vérification du VPS
+          command: |
+            set -Eeuo pipefail
+
+            mkdir -p "$HOME/.ssh"
+            chmod 700 "$HOME/.ssh"
+
+            printf '%s\n' "$VPS_KNOWN_HOSTS" \
+              > "$HOME/.ssh/known_hosts"
+
+            chmod 600 "$HOME/.ssh/known_hosts"
+
+      - run:
+          name: Déployer avec le mot de passe SSH
+          command: |
+            set -Eeuo pipefail
+
+            export SSHPASS="$VPS_PASSWORD"
+
+            sshpass -e ssh \
+              -o PubkeyAuthentication=no \
+              -o PreferredAuthentications=password \
+              -o NumberOfPasswordPrompts=1 \
+              -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=15 \
+              -p "$VPS_PORT" \
+              "$VPS_USER@$VPS_HOST" \
+              "bash -s -- '$CIRCLE_TAG'" \
+              < infra/deploy.sh
+
+      - run:
+          name: Vérifier le site public
+          command: |
+            curl \
+              --fail \
+              --show-error \
+              --retry 12 \
+              --retry-delay 5 \
+              "${PUBLIC_URL}/api/health"
+
+workflows:
+  ci:
+    jobs:
+      - test-backend
+      - test-frontend
+
+  release:
+    jobs:
+      - verify-release-tag:
+          filters: &release-filter >
+            pipeline.git.tag matches
+            /^v[0-9]+\.[0-9]+\.[0-9]+$/
+
+      - test-backend:
+          requires:
+            - verify-release-tag
+          filters: *release-filter
+
+      - test-frontend:
+          requires:
+            - verify-release-tag
+          filters: *release-filter
+
+      - build-and-push:
+          requires:
+            - test-backend
+            - test-frontend
+          context:
+            - partybox-production
+          filters: *release-filter
+
+      - approve-production:
+          type: approval
+          requires:
+            - build-and-push
+          filters: *release-filter
+
+      - deploy-vps:
+          requires:
+            - approve-production
+          context:
+            - partybox-production
+          filters: *release-filter
