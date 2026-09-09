@@ -130,6 +130,15 @@ func (s *Service) complete(ctx context.Context, p models.Player, assignmentID st
 			if g.Status != "playing" {
 				return models.ErrConflict
 			}
+			if g.Mode == models.ModeTreasureHunt && s.Vision != nil {
+				proof, err := tx.ValidProof(ctx, assignmentID)
+				if err != nil {
+					return err
+				}
+				if proof == nil {
+					return fmt.Errorf("%w : une preuve photo valide est requise", models.ErrConflict)
+				}
+			}
 			awardedPoints := points
 			allowChaosTrigger := true
 			if g.Mode == models.ModeChaos {

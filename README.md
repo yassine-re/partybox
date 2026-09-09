@@ -94,6 +94,7 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── migrations/003_game_events.{up,down}.sql
 │   ├── migrations/004_ai_missions.{up,down}.sql
 │   ├── migrations/005_chaos_mode.{up,down}.sql
+│   ├── migrations/006_treasure_photo_validation.{up,down}.sql
 │   └── seed.sql
 ├── firmware/
 │   ├── platformio.ini
@@ -135,7 +136,7 @@ Maintenir `DATABASE_URL` cohérent avec les trois variables PostgreSQL. Si le mo
 
 Changer `POSTGRES_PASSWORD` dans `.env` ne modifie pas le mot de passe d’une base déjà initialisée : effectuer sa rotation dans PostgreSQL aussi.
 
-Le binaire Go accepte également `MIGRATIONS_DIR` et `SEED_FILE`, configurées dans son image Docker. SvelteKit utilise `HOST=0.0.0.0`, `PORT=3000` et `BODY_SIZE_LIMIT=16K` dans le conteneur. En lancement natif, il faut charger les variables dans le shell ; le backend ne lit pas automatiquement `.env`.
+Le binaire Go accepte également `MIGRATIONS_DIR` et `SEED_FILE`, configurées dans son image Docker. SvelteKit utilise `HOST=0.0.0.0`, `PORT=3000` et `BODY_SIZE_LIMIT=6M` dans le conteneur pour les photos. La passerelle garde une limite de 8 Ko pour les autres routes. En lancement natif, il faut charger les variables dans le shell ; le backend ne lit pas automatiquement `.env`.
 
 ## Connexion avec un explorateur de base de données
 
@@ -279,6 +280,46 @@ Une partie utilise exclusivement son catalogue IA lorsqu’il existe ; sinon ell
 
 Une seule génération peut être active par partie et les transitions Start/End sont refusées pendant l’appel. Chaque partie dispose de cinq tentatives de génération par processus backend ; les générations réussies sont également comptées dans `game_events`, ce qui conserve la limite après un redémarrage. Les missions et attributions existantes restent utilisables une fois la limite atteinte.
 
+### Preuve photo Treasure Hunt
+
+Activer la vision dans `.env` avec une clé backend et un modèle compatible avec les images et Structured Outputs :
+
+```dotenv
+OPENAI_API_KEY=...
+OPENAI_VISION_MODEL=...
+OPENAI_VISION_DETAIL=low
+```
+
+`OPENAI_VISION_MODEL` est volontairement indépendant de `OPENAI_MODEL` : aucun fallback automatique. Sans clé ou sans modèle vision, Treasure Hunt conserve **J’ai trouvé** et sa validation manuelle. Secret Missions, Chaos et la génération de missions conservent leurs règles. `OPENAI_VISION_DETAIL` accepte uniquement `low` (défaut) ou `high`. Aucun modèle n’est codé en dur. Après modification, lancer `docker compose up --build -d`. Pour servir le build Node hors Docker, utiliser aussi `BODY_SIZE_LIMIT=6M`.
+
+Le serveur indique les capacités avec `GET /api/players/me/mission/proof` (authentifié) : `available`, `assignment_id`, `attempts`, `max_attempts`, `remaining_attempts` et `accepted`. Le frontend affiche alors **Prendre une photo** et une sélection depuis la galerie, compresse en JPEG à 1280 px maximum / qualité 0,8, montre un aperçu puis attend l’envoi explicite du joueur.
+
+`POST /api/players/me/mission/proof` accepte un corps `multipart/form-data` contenant exactement `assignment_id` et `image`. Le navigateur définit lui-même la boundary multipart. Le backend contrôle l’identité, l’appartenance et le statut de l’attribution, la partie en cours et le mode Treasure Hunt avant tout appel au fournisseur. Il reconnaît et décode les fichiers JPEG, PNG et WebP, avec un maximum de 5 Mio et 20 mégapixels. Le nom et le type MIME déclarés ne servent pas de preuve du format réel.
+
+La couche `internal/vision` expose `Validator.Validate(ctx, ValidationRequest)` ; `internal/ai` reste consacré à la génération de missions. Le fournisseur vision envoie la mission exacte et une image à Responses API avec `store=false` et une sortie structurée, puis vérifie de nouveau le résultat en Go :
+
+```json
+{
+  "verdict": "valid",
+  "confidence": 0.94,
+  "reason": "Un objet rouge est visible."
+}
+```
+
+`verdict` vaut `valid`, `invalid` ou `uncertain`, `confidence` est comprise entre 0 et 1 et `reason` contient au plus 300 caractères. Le prompt demande uniquement une preuve visuelle raisonnable, sans identification de personne, reconnaissance faciale ni inférence sensible. Les objectifs impossibles à établir visuellement doivent rester `uncertain`.
+
+Une transaction courte réserve la tentative, puis se ferme **avant** l’appel vision. Après l’analyse, une autre transaction enregistre le verdict et `mission_proof_evaluated` (assignment, verdict et confiance seulement). Si le verdict est `valid`, le service appelle ensuite `Service.Complete` : les verrous, le score, la nouvelle mission, l’idempotence et l’événement `mission_completed` restent gérés par le flux existant. La route de completion manuelle exige elle aussi une preuve acceptée lorsque la vision est configurée. Une réponse perdue se rejoue sans nouvel appel IA et sans double score. Si la partie se termine pendant l’analyse, la preuve est conservée mais la completion est refusée.
+
+La réponse HTTP 200 contient `proof` (id, assignment, verdict, confiance, raison, date) et, uniquement après acceptation, `completion` avec les points réellement accordés et la nouvelle mission. `invalid` affiche **Pas encore**, `uncertain` affiche **Difficile à vérifier** ; aucun des deux ne donne de points. Le WebSocket existant ne diffuse que `mission_completed` après une completion réussie. Ni photo, ni verdict, ni raison ne sont transmis aux autres joueurs.
+
+La migration `006_treasure_photo_validation` ajoute `mission_proofs`, indexée par attribution et date, et `player_missions.proof_attempts`. Les contraintes SQL bornent les verdicts, la confiance et la raison. Le rollback supprime les preuves et compteurs sans modifier les scores ni les attributions ; sauvegarder cet historique avant un rollback.
+
+La limite est **cinq appels par attribution**, définie une seule fois dans `services.MaxProofAttempts`. Les réservations persistent, y compris après une erreur réseau, une réponse fournisseur invalide ou un redémarrage. Les requêtes concurrentes partagent cette limite. Les fichiers ou attributions refusés avant l’appel ne consomment rien ; à la limite, le serveur répond `429 proof_limit`. Les erreurs du fournisseur répondent `503 vision_unavailable`, sans détail sensible. Aucun retry automatique payant n’est effectué. Une mission ayant épuisé ses tentatives reste bloquée dans cette V1 ; il n’existe pas encore de passage à la mission suivante ni de dérogation hôte.
+
+PartyBox ne conserve aucune photo sur disque, en BDD, dans les logs ou dans le stockage du navigateur. Le multipart est lu en mémoire sans fichier temporaire ; les URLs d’aperçu sont révoquées, et le JPEG recompressé dans le navigateur ne garde pas les métadonnées EXIF. Les images sont transmises au fournisseur pour l’analyse : les règles de conservation du fournisseur restent distinctes de celles de PartyBox. Seuls les verdicts, raisons et compteurs sont persistés localement.
+
+Le coût dépend du modèle configuré, de l’image et du niveau de détail. La compression, `low` par défaut, la sortie bornée et la limite de cinq tentatives maîtrisent le volume des requêtes ; aucun prix fixe ni garantie de précision n’est supposé. Références de l’implémentation : [images dans Responses API](https://developers.openai.com/api/docs/guides/images-vision) et [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
+
 ### Identité et cohérence
 
 - Token opaque de **32 octets aléatoires**, généré avec `crypto/rand`, encodé en base64url ; seul son **hash SHA-256** est conservé dans `players.token_hash`.
@@ -324,7 +365,16 @@ Le package realtime contient des tests avec `httptest` et de vrais clients WebSo
 ```sh
 cd backend
 go test ./...
+go vet ./...
 ```
+
+Les tests PostgreSQL sont ignorés si `TEST_DATABASE_URL` n’est pas défini. Pour exécuter tous les scénarios sur un serveur local, avec un compte autorisé à créer des schémas :
+
+```sh
+TEST_DATABASE_URL='postgres://partybox:partybox_dev_only@127.0.0.1:5432/partybox?sslmode=disable' go test ./...
+```
+
+Les tests de preuve photo utilisent un fake `Validator` et un serveur HTTP local simulant Responses : aucun appel réel OpenAI. Ils couvrent les trois verdicts, les refus avant appel, les fichiers invalides/trop gros, les erreurs fournisseur, la persistance, les quotas concurrents et après redémarrage, la completion idempotente, le WebSocket, la fin de partie pendant l’analyse, le fallback manuel et la migration `005 → 006` avec rollback.
 
 ```sh
 cd frontend
@@ -353,11 +403,11 @@ La box `PB001` reste une référence de développement. Pour provisionner une au
 
 ## Limites et prochaines étapes
 
-- La réussite d’une mission repose sur la déclaration du joueur. Pas de validation matérielle ni d’antitriche.
+- La réussite reste déclarative en Secret Missions, Chaos et Treasure Hunt sans vision. La preuve photo optionnelle de Treasure Hunt est une vérification visuelle, pas une garantie antitriche ; les missions abstraites ou historiques peuvent rester incertaines.
 - Pas de transfert d’hôte, de récupération de token perdu, de révocation, d’expiration automatique ou de nettoyage des anciennes parties. Si l’hôte perd son stockage local pendant une partie, une intervention en base sera nécessaire pour la fermer.
 - Pas de présence connectée/déconnectée : le lobby liste les inscrits. Pas de fonctionnement hors ligne ; une connexion au serveur est nécessaire.
 - Les événements Chaos sont déclenchés par le nombre de validations, sans timer. Ils ne comprennent pour l’instant que Double Trouble, Bounty et Mission Shuffle.
-- Pas encore de PWA installable, service worker, push, compte email/OAuth, upload, MQTT, Redis ou ML. La structure SvelteKit et les assets statiques permettent d’ajouter une PWA plus tard.
+- Pas encore de PWA installable, service worker, push, compte email/OAuth, galerie de photos, MQTT, Redis ou ML. La structure SvelteKit et les assets statiques permettent d’ajouter une PWA plus tard.
 - Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium ; deux téléphones physiques, le HTTPS public et le firmware n’ont pas été vérifiés sur du matériel réel.
 
 Pour intégrer l’ESP32 ensuite :

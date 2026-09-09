@@ -12,6 +12,7 @@ import (
 	"partybox/backend/internal/models"
 	"partybox/backend/internal/realtime"
 	"partybox/backend/internal/services"
+	"partybox/backend/internal/vision"
 )
 
 type Handler struct {
@@ -42,8 +43,16 @@ func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.E
 			c.Next()
 			return
 		}
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8192)
+		bodyLimit := int64(8192)
 		timeout := 10 * time.Second
+		if c.Request.Method == http.MethodPost && c.Request.URL.Path == proofPath {
+			bodyLimit = vision.MaxUploadBytes
+			timeout = 60 * time.Second
+			controller := http.NewResponseController(c.Writer)
+			_ = controller.SetReadDeadline(time.Now().Add(30 * time.Second))
+			_ = controller.SetWriteDeadline(time.Now().Add(65 * time.Second))
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, bodyLimit)
 		if strings.HasSuffix(c.Request.URL.Path, "/ai-missions/generate") {
 			timeout = 45 * time.Second
 			// The server keeps a short global WriteTimeout. Gin exposes the
@@ -71,6 +80,7 @@ func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.E
 	h.registerRealtimeRoutes(public, auth)
 	h.registerChaosRoutes(auth)
 	h.registerAIRoutes(auth)
+	h.registerProofRoutes(auth)
 	r.NoRoute(func(c *gin.Context) { respond(c, nil, models.ErrNotFound, 0) })
 	return r
 }
@@ -120,6 +130,10 @@ func respond(c *gin.Context, value any, err error, status int) {
 		status, code = 404, "not_found"
 	case errors.Is(err, models.ErrConflict):
 		status, code = 409, "conflict"
+	case errors.Is(err, services.ErrProofLimit):
+		status, code = 429, "proof_limit"
+	case errors.Is(err, services.ErrProofProvider):
+		status, code, message = 503, "vision_unavailable", services.ErrProofProvider.Error()
 	}
 	if status < 500 {
 		message = err.Error()

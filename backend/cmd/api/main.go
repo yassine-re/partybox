@@ -17,6 +17,7 @@ import (
 	"partybox/backend/internal/realtime"
 	"partybox/backend/internal/repositories"
 	"partybox/backend/internal/services"
+	"partybox/backend/internal/vision"
 )
 
 func env(key, fallback string) string {
@@ -64,6 +65,13 @@ func run() error {
 	s := &services.Service{
 		Repo: &repositories.Repository{Pool: pool},
 		AI:   generator,
+	}
+	visionModel := strings.TrimSpace(os.Getenv("OPENAI_VISION_MODEL"))
+	if key != "" && visionModel != "" {
+		s.Vision, err = vision.NewOpenAIValidator(key, visionModel, os.Getenv("OPENAI_VISION_DETAIL"), os.Getenv("OPENAI_BASE_URL"))
+		if err != nil {
+			return err
+		}
 	}
 	frontendURL := env("FRONTEND_URL", "http://localhost:3000")
 	realtimeServer := realtime.NewServer(frontendURL, s.AuthorizeRealtime)

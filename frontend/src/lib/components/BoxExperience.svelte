@@ -15,6 +15,8 @@
     Game,
     GameMode,
     Mission,
+    ProofResponse,
+    ProofStatus,
     SavedSession,
     Session,
   } from "$lib/api/types";
@@ -31,6 +33,7 @@
   let game = $state<Game | null>(null);
   let mission = $state<Mission | null>(null);
   let chaosState = $state<ChaosState | null>(null);
+  let proofStatus = $state<ProofStatus | null>(null);
   let nickname = $state("");
   let loading = $state(true);
   let busy = $state(false);
@@ -104,10 +107,13 @@
         nextGame.mode === "chaos"
           ? await api.chaos(current.gameId, current.token)
           : null;
+      const nextProofStatus = nextGame.mode === "treasure_hunt"
+        ? await api.missionProofStatus(current.token) : null;
       if (disposed) return;
       game = nextGame;
       mission = nextMission;
       chaosState = nextChaosState;
+      proofStatus = nextProofStatus;
     } else {
       const nextBox = await api.box(boxId);
       if (disposed) return;
@@ -150,6 +156,7 @@
         playerId = "";
         mission = null;
         chaosState = null;
+        proofStatus = null;
         notice =
           "Ta précédente session n’est plus disponible. Tu peux rejoindre à nouveau.";
         try {
@@ -263,6 +270,30 @@
     });
   }
 
+  async function submitProof(id: string, image: Blob): Promise<ProofResponse> {
+    if (!session || busy) throw new Error("Une action est déjà en cours.");
+    const current = session;
+    busy = true;
+    notice = "";
+    error = "";
+    try {
+      if (inFlight) await inFlight.catch(() => undefined);
+      const result = await api.submitMissionProof(current.token, id, image);
+      if (result.completion) {
+        mission = result.completion.mission;
+        notice = result.completion.already_completed
+          ? mode.alreadyCompletedMessage
+          : `Photo validée ! ${mode.completionMessage(result.completion.awarded_points)}`;
+      }
+      return result;
+    } finally {
+      // Refresh the attempt budget even after a provider error (call consumed).
+      await refresh().catch(showError);
+      busy = false;
+      if (realtimeRefreshPending) queueRealtimeRefresh();
+    }
+  }
+
   function start() {
     if (session && !aiGenerating) {
       const current = session;
@@ -288,6 +319,7 @@
       game = null;
       mission = null;
       chaosState = null;
+      proofStatus = null;
       playerId = "";
       confirmEnd = false;
     });
@@ -351,6 +383,8 @@
       {realtimeStatus}
       {tab}
       {chaosState}
+      {proofStatus}
+      onproofsubmit={submitProof}
       oncomplete={complete}
       onrefresh={() => void sync()}
       ontabchange={(nextTab) => (tab = nextTab)}

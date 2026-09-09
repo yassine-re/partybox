@@ -11,7 +11,7 @@ export default {
         "default-src": ["self"],
         "script-src": ["self"],
         "style-src": ["self", "unsafe-inline"],
-        "img-src": ["self", "data:"],
+        "img-src": ["self", "data:", "blob:"],
         "connect-src": ["self", "http:", "https:", "ws:", "wss:"],
         "frame-ancestors": ["none"],
         "base-uri": ["self"],
