@@ -26,7 +26,6 @@ export FRONTEND_IMAGE="ghcr.io/yassine-re/partybox-frontend:${tag}"
 compose=(
   docker compose
   --env-file .env.production
-  --profile production
 )
 
 echo "Téléchargement des images Docker"
@@ -38,7 +37,7 @@ echo "Démarrage de PartyBox"
 echo "Attente du healthcheck"
 
 for attempt in {1..24}; do
-  if curl --fail --silent http://127.0.0.1:3000/api/health; then
+  if curl --fail --silent http://127.0.0.1:3008/api/health; then
     echo
     echo "Déploiement $tag réussi"
     exit 0
@@ -50,5 +49,5 @@ done
 
 echo "Échec du healthcheck"
 "${compose[@]}" ps
-"${compose[@]}" logs --tail=100 backend frontend caddy
+"${compose[@]}" logs --tail=100 backend frontend
 exit 1
