@@ -111,3 +111,47 @@ export interface AIGenerationOptions {
   context?: string;
   count?: number;
 }
+
+export type ReactionKind = "solo" | "duel";
+export type ReactionStatus =
+  | "awaiting_assignment"
+  | "awaiting_device"
+  | "armed"
+  | "resolved"
+  | "expired"
+  | "cancelled";
+
+export interface ReactionChallenge {
+  id: string;
+  game_id: string;
+  box_id: string;
+  kind: ReactionKind;
+  status: ReactionStatus;
+  button_s2_player_id: string | null;
+  button_s2_player_name: string | null;
+  button_s3_player_id: string | null;
+  button_s3_player_name: string | null;
+  delay_ms: number;
+  winner_player_id: string | null;
+  winner_player_name: string | null;
+  false_start_player_id: string | null;
+  false_start_player_name: string | null;
+  reaction_ms: number | null;
+  awarded_points: number;
+  scheduled_at: string;
+  assigned_at: string | null;
+  armed_at: string | null;
+  resolved_at: string | null;
+  expires_at: string;
+}
+
+export interface ReactionState {
+  enabled: boolean;
+  device_online: boolean;
+  challenge: ReactionChallenge | null;
+}
+
+export interface ReactionAssignment {
+  button_s2_player_id: string | null;
+  button_s3_player_id: string | null;
+}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -20,10 +21,13 @@ import (
 )
 
 type Service struct {
-	Repo   *repositories.Repository
-	AI     ai.MissionGenerator
-	Chaos  *chaos.Engine
-	Vision vision.Validator
+	Repo       *repositories.Repository
+	AI         ai.MissionGenerator
+	Chaos      *chaos.Engine
+	Vision     vision.Validator
+	Reaction   ReactionConfig
+	Now        func() time.Time
+	RandomIntN func(int) int
 
 	aiUsageMu sync.Mutex
 	aiUsage   map[string]aiGenerationUsage

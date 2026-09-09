@@ -7,6 +7,8 @@
     Player,
     ProofResponse,
     ProofStatus,
+    ReactionAssignment,
+    ReactionState,
   } from "$lib/api/types";
   import type { RealtimeStatus } from "$lib/realtime";
   import { GAME_MODES } from "$lib/game-modes";
@@ -15,6 +17,10 @@
   import ChaosBanner from "./ChaosBanner.svelte";
   import TreasureProof from "./TreasureProof.svelte";
   import MissionFeedback from "./MissionFeedback.svelte";
+  import ReactionBanner from "../reaction/ReactionBanner.svelte";
+  import ReactionAssignmentModal from "../reaction/ReactionAssignmentModal.svelte";
+  import ReactionResult from "../reaction/ReactionResult.svelte";
+  import { canAssignReaction } from "$lib/reaction";
 
   type GameTab = "mission" | "leaderboard";
 
@@ -37,6 +43,8 @@
     chaosState = null,
     proofStatus = null,
     onproofsubmit,
+    reactionState = null,
+    onreactionassign,
   }: {
     game: Game;
     players: Player[];
@@ -56,9 +64,12 @@
     chaosState?: ChaosState | null;
     proofStatus?: ProofStatus | null;
     onproofsubmit: (id: string, image: Blob) => Promise<ProofResponse>;
+    reactionState?: ReactionState | null;
+    onreactionassign: (challengeId: string, assignment: ReactionAssignment) => void;
   } = $props();
   const me = $derived(players.find((player) => player.id === playerId));
   const mode = $derived(GAME_MODES[game.mode]);
+  const reactionChallenge = $derived(reactionState?.challenge ?? null);
 </script>
 
 <div class="mobile-tabs" aria-label="Affichage du jeu">
@@ -74,6 +85,18 @@
 </div>
 {#if game.mode === "chaos" && chaosState}
   <ChaosBanner state={chaosState} />
+{/if}
+{#if reactionState}<ReactionBanner state={reactionState} />{/if}
+{#if reactionChallenge?.status === "resolved"}
+  <ReactionResult challenge={reactionChallenge} {players} />
+{/if}
+{#if reactionChallenge && canAssignReaction(reactionState, Boolean(me?.is_host))}
+  <ReactionAssignmentModal
+    challenge={reactionChallenge}
+    {players}
+    {busy}
+    onassign={(assignment) => onreactionassign(reactionChallenge.id, assignment)}
+  />
 {/if}
 <div class="game-grid play-grid">
   <div class:mobile-hidden={tab !== "mission"}>

@@ -82,8 +82,23 @@ func Router(s *services.Service, rt *realtime.Server, frontendURL string) *gin.E
 	h.registerChaosRoutes(auth)
 	h.registerAIRoutes(auth)
 	h.registerProofRoutes(auth)
+	h.registerReactionRoutes(auth)
+	device := r.Group("/api/device/boxes/:boxId")
+	device.Use(h.authenticateDevice)
+	h.registerDeviceRoutes(device)
 	r.NoRoute(func(c *gin.Context) { respond(c, nil, models.ErrNotFound, 0) })
 	return r
+}
+
+func (h *Handler) authenticateDevice(c *gin.Context) {
+	header := c.GetHeader("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") ||
+		h.Service.AuthenticateDevice(c.Request.Context(), c.Param("boxId"), strings.TrimPrefix(header, "Bearer ")) != nil {
+		respond(c, nil, models.ErrUnauthorized, 0)
+		c.Abort()
+		return
+	}
+	c.Next()
 }
 
 func (h *Handler) authenticate(c *gin.Context) {

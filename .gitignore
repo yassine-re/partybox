@@ -9,6 +9,7 @@ coverage*
 .DS_Store
 *.log
 .pio/
+firmware/include/secrets.h
 .venv/
 __pycache__/
 *.pyc

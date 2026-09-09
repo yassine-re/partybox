@@ -226,6 +226,25 @@ docker compose up -d --no-deps backend frontend
 
 Un simple `docker compose restart` ne recharge pas les variables d’environnement. Ouvrir ensuite `https://<partage>.share.zrok.io/box/PB001` sur le téléphone. Si l’URL temporaire du tunnel change, mettre `FRONTEND_URL` à jour et relancer la commande ci-dessus. Les sessions locales appartiennent à l’origine du navigateur : changer de domaine ne transfère pas le token joueur.
 
+## PartyBox physique et mini-jeu de réaction
+
+La migration `008_esp32_reaction` ajoute une identité device par box, une file de commandes HTTP, un planning persistant par partie et les challenges solo/duel. Le token ESP32 est distinct des sessions joueur et seul son hash SHA-256 est stocké. Le scheduler ne déclenche que pendant `playing`, avec un heartbeat récent et au maximum un challenge actif ; une panne du boîtier ne bloque jamais les missions web.
+
+Le backend choisit le délai rouge → vert et l’ESP32 l’exécute localement. Le serveur traduit S2/S3 vers les joueurs, calcule le score, déduplique `event_id`, verrouille la partie et persiste le score avec `reaction_challenge_resolved` dans une seule transaction. Ce chemin n’appelle jamais la completion de mission et ne déclenche donc aucun effet Chaos.
+
+Configuration serveur :
+
+| Variable | Défaut | Rôle |
+| --- | --- | --- |
+| `REACTION_ENABLED` | `true` | Active le scheduler physique |
+| `REACTION_MIN_INTERVAL_SECONDS` | `45` | Borne basse du prochain challenge |
+| `REACTION_MAX_INTERVAL_SECONDS` | `90` | Borne haute, strictement supérieure à la borne basse |
+| `REACTION_ASSIGNMENT_TIMEOUT_SECONDS` | `45` | Temps donné à l’hôte pour assigner S2/S3 |
+| `REACTION_RESULT_TIMEOUT_SECONDS` | `15` | Marge de retour après le délai local |
+| `DEVICE_ONLINE_TIMEOUT_SECONDS` | `10` | Âge maximal du dernier heartbeat |
+
+Provisionner `PB001` après les migrations avec `docker compose run --rm --entrypoint /app/provision-device backend -box-id PB001`, puis conserver immédiatement le token affiché. Les secrets, la procédure ESP-Prog, le diagnostic prudent du PCB et le test complet sont détaillés dans [`firmware/README.md`](firmware/README.md).
+
 ## API REST
 
 Toutes les réponses applicatives sont JSON. Les routes privées exigent `Authorization: Bearer <token>`. Les tokens ne sont jamais inclus dans le lobby, le classement ou les informations de box.
@@ -250,6 +269,12 @@ Toutes les réponses applicatives sont JSON. Les routes privées exigent `Author
 | `GET /api/games/:gameId/ai-missions/status` | Joueur de la partie | Disponibilité, taille du catalogue et générations restantes                                  |
 | `POST /api/games/:gameId/ai-missions/generate` | Hôte dans le lobby | Ambiance, intensité, contexte et nombre ; retourne uniquement le total généré                 |
 | `POST /api/boxes/:boxId/events`         | Contrat réservé           | `{ "type": "button_press" }` → **501 Not Implemented**, aucun effet                         |
+| `GET /api/games/:gameId/reaction` | Joueur de la partie | État REST du boîtier et dernier challenge |
+| `POST /api/games/:gameId/reaction/:challengeId/assign` | Hôte | Attribue un joueur à S2/S3 et crée la commande |
+| `POST /api/device/boxes/:boxId/heartbeat` | Token device | Présence, version firmware, uptime et RSSI |
+| `GET /api/device/boxes/:boxId/commands` | Token device | Commandes `pending`/`acknowledged` non expirées de cette box |
+| `POST /api/device/boxes/:boxId/commands/:commandId/ack` | Token device | Ack retry-safe et passage du challenge à `armed` |
+| `POST /api/device/boxes/:boxId/reaction-results` | Token device | Résultat terminal idempotent ; score calculé côté serveur |
 
 Création et entrée renvoient `201` avec `{ token, player, game }`. Une validation renvoie `{ awarded_points, already_completed, player, mission }`. Le champ `mission.id` est l’identifiant de **l’attribution**, tandis que `mission.mission_id` identifie la mission du catalogue.
 
@@ -379,7 +404,7 @@ go test ./...
 go vet ./...
 ```
 
-Les tests PostgreSQL sont ignorés si `TEST_DATABASE_URL` n’est pas défini. Pour exécuter tous les scénarios sur un serveur local, avec un compte autorisé à créer des schémas :
+Les tests PostgreSQL sont ignorés si `TEST_DATABASE_URL` n’est pas défini. Ils couvrent aussi l’auth device, le heartbeat sans spam, le scheduler et ses expirations, l’assignation host-only, le polling/ack, les résultats concurrents, le barème et l’isolation de Chaos. Pour exécuter tous les scénarios sur un serveur local, avec un compte autorisé à créer des schémas :
 
 ```sh
 TEST_DATABASE_URL='postgres://partybox:partybox_dev_only@127.0.0.1:5432/partybox?sslmode=disable' go test ./...
@@ -392,6 +417,11 @@ cd frontend
 npm test
 npm run check
 npm run build
+```
+
+```sh
+pio test -d firmware -e native
+pio run -d firmware -e esp32s2
 ```
 
 ```sh
@@ -424,14 +454,7 @@ La box `PB001` reste une référence de développement. Pour provisionner une au
 - Pas de présence connectée/déconnectée : le lobby liste les inscrits. Pas de fonctionnement hors ligne ; une connexion au serveur est nécessaire.
 - Les événements Chaos sont déclenchés par le nombre de validations, sans timer. Ils ne comprennent pour l’instant que Double Trouble, Bounty et Mission Shuffle.
 - Pas encore de PWA installable, service worker, push, compte email/OAuth, galerie de photos, MQTT, Redis ou modèle ML fourni en production. Le pipeline ML peut entraîner un ranker global sur les données notées réelles et l’intégration Go reste inactive sans artifact explicitement configuré.
-- Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium ; deux téléphones physiques, le HTTPS public et le firmware n’ont pas été vérifiés sur du matériel réel.
-
-Pour intégrer l’ESP32 ensuite :
-
-1. Choisir la carte, câbler le bouton et implémenter l’antirebond dans le squelette PlatformIO / Arduino.
-2. Provisionner `box_id`, Wi-Fi et une clé matérielle distincte des tokens joueurs, sans les committer.
-3. Activer la route d’événements avec authentification du boîtier, identifiant d’événement et gestion des retries.
-4. Définir comment l’appui désigne le joueur à valider, puis appeler la logique de validation transactionnelle existante.
-5. Encoder l’URL HTTPS dans le tag NFC passif et vérifier le parcours sur plusieurs téléphones avec le matériel.
+- Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium. Le firmware ESP32-S2 et sa logique native compilent en CI, mais le PCB physique, les GPIO inconnus, l’ESP-Prog et le parcours radio réel doivent encore être validés sur place.
+- Le tag NFC reste passif et doit être programmé séparément avec `https://<domain>/box/PB001`. Il n’existe volontairement ni OTA, MQTT, Bluetooth, lecteur NFC actif, logique batterie, PIR ou WebSocket ESP32.
 
 Références techniques : [serveur Node SvelteKit](https://svelte.dev/docs/kit/adapter-node), [Gin](https://gin-gonic.com/en/docs/quickstart/), [pgx v5](https://pkg.go.dev/github.com/jackc/pgx/v5).

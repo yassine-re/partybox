@@ -78,6 +78,10 @@ func run() error {
 		Repo: repository,
 		AI:   generator,
 	}
+	s.Reaction, err = services.ParseReactionConfig(os.Getenv)
+	if err != nil {
+		return err
+	}
 	visionModel := strings.TrimSpace(os.Getenv("OPENAI_VISION_MODEL"))
 	if key != "" && visionModel != "" {
 		s.Vision, err = vision.NewOpenAIValidator(key, visionModel, os.Getenv("OPENAI_VISION_DETAIL"), os.Getenv("OPENAI_BASE_URL"))
@@ -88,6 +92,9 @@ func run() error {
 	frontendURL := env("FRONTEND_URL", "http://localhost:3000")
 	realtimeServer := realtime.NewServer(frontendURL, s.AuthorizeRealtime)
 	defer realtimeServer.Close()
+	if s.Reaction.Enabled {
+		go runReactionScheduler(ctx, s, realtimeServer)
+	}
 	server := &http.Server{
 		Addr:              ":" + env("BACKEND_PORT", "8080"),
 		Handler:           handlers.Router(s, realtimeServer, frontendURL),
@@ -107,4 +114,30 @@ func run() error {
 		return server.Shutdown(shutdown)
 	}
 	return nil
+}
+
+func runReactionScheduler(ctx context.Context, service *services.Service, server *realtime.Server) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			changes, err := service.TickReactions(ctx)
+			if err != nil {
+				if ctx.Err() == nil {
+					slog.Error("reaction scheduler tick failed", "error", err)
+				}
+				continue
+			}
+			for _, change := range changes {
+				eventType := realtime.EventReactionChallengeChanged
+				if change.Resolved {
+					eventType = realtime.EventReactionChallengeResolved
+				}
+				server.Broadcast(realtime.NewEvent(eventType, change.GameID, ""))
+			}
+		}
+	}
 }

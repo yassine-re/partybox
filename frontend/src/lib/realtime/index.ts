@@ -12,7 +12,9 @@ export interface RealtimeEvent {
     | "player_joined"
     | "game_started"
     | "mission_completed"
-    | "game_ended";
+    | "game_ended"
+    | "reaction_challenge_changed"
+    | "reaction_challenge_resolved";
   game_id: string;
   player_id?: string;
   occurred_at: string;
@@ -28,6 +30,8 @@ const eventTypes = new Set<RealtimeEvent["type"]>([
   "game_started",
   "mission_completed",
   "game_ended",
+  "reaction_challenge_changed",
+  "reaction_challenge_resolved",
 ]);
 
 function websocketURL(gameId: string, ticket: string): string {

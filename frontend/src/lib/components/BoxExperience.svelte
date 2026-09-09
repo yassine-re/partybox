@@ -21,6 +21,8 @@
     MissionFeedbackRating,
     SavedSession,
     Session,
+    ReactionAssignment,
+    ReactionState,
   } from "$lib/api/types";
   import EntryForm from "./EntryForm.svelte";
   import FinalResults from "./game/FinalResults.svelte";
@@ -36,6 +38,7 @@
   let mission = $state<Mission | null>(null);
   let chaosState = $state<ChaosState | null>(null);
   let proofStatus = $state<ProofStatus | null>(null);
+  let reactionState = $state<ReactionState | null>(null);
   let nickname = $state("");
   let loading = $state(true);
   let busy = $state(false);
@@ -114,11 +117,14 @@
           : null;
       const nextProofStatus = nextGame.mode === "treasure_hunt"
         ? await api.missionProofStatus(current.token) : null;
+      const nextReactionState = nextGame.status === "playing"
+        ? await api.reaction(current.gameId, current.token) : null;
       if (disposed) return;
       game = nextGame;
       mission = nextMission;
       chaosState = nextChaosState;
       proofStatus = nextProofStatus;
+      reactionState = nextReactionState;
     } else {
       const nextBox = await api.box(boxId);
       if (disposed) return;
@@ -162,6 +168,7 @@
         mission = null;
         chaosState = null;
         proofStatus = null;
+        reactionState = null;
         feedbackAssignmentId = null;
         feedbackError = "";
         notice =
@@ -367,6 +374,13 @@
       });
     }
   }
+  function assignReaction(challengeId: string, assignment: ReactionAssignment) {
+    if (!session) return;
+    const current = session;
+    void action(async () => {
+      await api.assignReaction(current.gameId, challengeId, current.token, assignment);
+    });
+  }
   function backToBox() {
     void action(async () => {
       stopRealtime();
@@ -376,6 +390,7 @@
       mission = null;
       chaosState = null;
       proofStatus = null;
+      reactionState = null;
       feedbackAssignmentId = null;
       feedbackError = "";
       playerId = "";
@@ -442,6 +457,8 @@
       {tab}
       {chaosState}
       {proofStatus}
+      {reactionState}
+      onreactionassign={assignReaction}
       onproofsubmit={submitProof}
       {feedbackAssignmentId}
       {feedbackBusy}

@@ -13,6 +13,9 @@ import type {
   Player,
   ProofResponse,
   ProofStatus,
+  ReactionAssignment,
+  ReactionChallenge,
+  ReactionState,
   Session,
 } from "./types";
 
@@ -135,4 +138,17 @@ export const api = {
     ),
   aiMissionsStatus: (id: string, token: string) =>
     request<AIStatus>(`/games/${id}/ai-missions/status`, token),
+  reaction: (id: string, token: string) =>
+    request<ReactionState>(`/games/${id}/reaction`, token),
+  assignReaction: (
+    gameId: string,
+    challengeId: string,
+    token: string,
+    assignment: ReactionAssignment,
+  ) =>
+    request<ReactionChallenge>(
+      `/games/${gameId}/reaction/${challengeId}/assign`,
+      token,
+      assignment,
+    ),
 };

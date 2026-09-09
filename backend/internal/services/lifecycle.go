@@ -97,6 +97,22 @@ func (s *Service) transition(ctx context.Context, gameID string, p models.Player
 		if err = tx.SetGameStatus(ctx, gameID, target); err != nil {
 			return err
 		}
+		if target == "ended" {
+			cancelled, cancelErr := tx.CancelActiveReactions(ctx, gameID, s.now())
+			if cancelErr != nil {
+				return cancelErr
+			}
+			for _, challengeID := range cancelled {
+				challenge, challengeErr := tx.LockReactionChallenge(ctx, challengeID)
+				if challengeErr != nil {
+					return challengeErr
+				}
+				if challengeErr = tx.RecordReactionEvent(ctx, challenge, models.GameEventReactionChallengeExpired, nil,
+					map[string]any{"status": "cancelled"}); challengeErr != nil {
+					return challengeErr
+				}
+			}
+		}
 		eventType := models.GameEventGameEnded
 		if target == "playing" {
 			eventType = models.GameEventGameStarted

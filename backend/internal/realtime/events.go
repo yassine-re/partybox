@@ -9,6 +9,8 @@ const (
 	EventGameStarted      EventType = "game_started"
 	EventMissionCompleted EventType = "mission_completed"
 	EventGameEnded        EventType = "game_ended"
+	EventReactionChallengeChanged  EventType = "reaction_challenge_changed"
+	EventReactionChallengeResolved EventType = "reaction_challenge_resolved"
 )
 
 // Event deliberately carries no game state or mission data. It only tells a
