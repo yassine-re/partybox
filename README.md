@@ -2,7 +2,7 @@
 
 PartyBox transforme une soirée IRL en jeu de missions secrètes, de chasse au trésor ou en partie Chaos aux règles dynamiques. Un tag NFC passif dans le boîtier ouvre une URL comme `https://partybox.example.com/box/PB001`. Chaque joueur utilise son téléphone ; Go et PostgreSQL centralisent les parties, missions, scores et événements métier sur un serveur.
 
-Ce dépôt contient le premier MVP logiciel : création de partie, lobby partagé, démarrage par l’hôte, missions privées, validation virtuelle, points, nouvelle mission et classement final. Le firmware et le machine learning ont uniquement leur emplacement préparé.
+Ce dépôt contient le premier MVP logiciel : création de partie, lobby partagé, démarrage par l’hôte, missions privées, validation virtuelle, points, nouvelle mission et classement final. Le pipeline ML entraîne hors ligne un ranking contextuel optionnel ; le firmware conserve uniquement son emplacement préparé.
 
 ## Démarrage rapide
 
@@ -68,6 +68,7 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   │   ├── handlers/            # Composition HTTP + routes boxes/games/players/realtime
 │   │   ├── chaos/               # Moteur, événements et état du mode Chaos
 │   │   ├── realtime/            # Tickets courts, hub par partie et clients WebSocket
+│   │   ├── ml/                  # Chargement et scoring du modèle portable optionnel
 │   │   ├── services/            # Identités et cycle de vie d’une partie
 │   │   ├── repositories/        # SQL, transactions et journal d’événements
 │   │   └── models/              # Types métier, réponses JSON et GameEvent persistant
@@ -104,7 +105,11 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 ├── ml/
 │   ├── dataset.py              # Jointures et contrôles qualité
 │   ├── export_dataset.py       # Export CSV et statistiques
-│   └── requirements.txt        # pandas + psycopg
+│   ├── features.py             # Features pré-assignment sans fuite
+│   ├── train.py                # Split groupé, Logistic Regression et artifacts
+│   ├── evaluate.py             # Baseline, métriques et coefficients
+│   ├── predict.py              # Scoring et ranking Python
+│   └── tests/                  # Tests et fixtures Python ↔ Go
 ├── infra/Caddyfile
 ├── docker-compose.yml
 ├── .env.example
@@ -418,7 +423,7 @@ La box `PB001` reste une référence de développement. Pour provisionner une au
 - Pas de transfert d’hôte, de récupération de token perdu, de révocation, d’expiration automatique ou de nettoyage des anciennes parties. Si l’hôte perd son stockage local pendant une partie, une intervention en base sera nécessaire pour la fermer.
 - Pas de présence connectée/déconnectée : le lobby liste les inscrits. Pas de fonctionnement hors ligne ; une connexion au serveur est nécessaire.
 - Les événements Chaos sont déclenchés par le nombre de validations, sans timer. Ils ne comprennent pour l’instant que Double Trouble, Bounty et Mission Shuffle.
-- Pas encore de PWA installable, service worker, push, compte email/OAuth, galerie de photos, MQTT, Redis ou modèle ML en production. Le pipeline ML actuel exporte uniquement les données notées.
+- Pas encore de PWA installable, service worker, push, compte email/OAuth, galerie de photos, MQTT, Redis ou modèle ML fourni en production. Le pipeline ML peut entraîner un ranker global sur les données notées réelles et l’intégration Go reste inactive sans artifact explicitement configuré.
 - Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium ; deux téléphones physiques, le HTTPS public et le firmware n’ont pas été vérifiés sur du matériel réel.
 
 Pour intégrer l’ESP32 ensuite :

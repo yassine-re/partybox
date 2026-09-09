@@ -1,0 +1,10 @@
+[
+  {
+    "input": {"mode": "secret_missions", "category": "social", "difficulty": 2, "points": 30, "source": "ai", "game_size": 5},
+    "python_score": 0.6921095043
+  },
+  {
+    "input": {"mode": "treasure_hunt", "category": "unknown", "difficulty": 1, "points": 10, "source": "seed", "game_size": 3},
+    "python_score": 0.2437000299
+  }
+]

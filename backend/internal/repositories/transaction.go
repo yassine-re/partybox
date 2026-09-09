@@ -38,7 +38,7 @@ func (t *Transaction) Player(ctx context.Context, id string) (models.Player, err
 }
 
 func (t *Transaction) AssignMission(ctx context.Context, playerID string) error {
-	return assign(ctx, t.tx, playerID)
+	return assign(ctx, t.tx, playerID, t.missionScorer)
 }
 
 func (t *Transaction) CurrentMission(ctx context.Context, playerID string) (*models.Mission, error) {
