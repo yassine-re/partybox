@@ -9,6 +9,7 @@
     saveSession,
   } from "$lib/api/session";
   import { GameRealtime, type RealtimeStatus } from "$lib/realtime";
+  import { shouldRequestMissionFeedback } from "$lib/feedback";
   import type {
     Box,
     ChaosState,
@@ -17,6 +18,7 @@
     Mission,
     ProofResponse,
     ProofStatus,
+    MissionFeedbackRating,
     SavedSession,
     Session,
   } from "$lib/api/types";
@@ -49,6 +51,9 @@
   let realtimeClient: GameRealtime | null = null;
   let realtimeRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   let realtimeRefreshPending = false;
+  let feedbackAssignmentId = $state<string | null>(null);
+  let feedbackBusy = $state(false);
+  let feedbackError = $state("");
   let disposed = false;
   const players = $derived(game?.players ?? []);
   const mode = $derived(GAME_MODES[game?.mode ?? DEFAULT_GAME_MODE]);
@@ -157,6 +162,8 @@
         mission = null;
         chaosState = null;
         proofStatus = null;
+        feedbackAssignmentId = null;
+        feedbackError = "";
         notice =
           "Ta précédente session n’est plus disponible. Tu peux rejoindre à nouveau.";
         try {
@@ -244,6 +251,8 @@
     playerId = result.player.id;
     game = result.game;
     nickname = result.player.name;
+    feedbackAssignmentId = null;
+    feedbackError = "";
     storageWarning = !saveSession(boxId, session, nickname);
     startRealtime();
   }
@@ -260,14 +269,52 @@
   function complete() {
     if (!session || !mission) return;
     const token = session.token,
-      assignmentId = mission.id;
+      completedAssignmentId = mission.id;
     void action(async () => {
-      const result = await api.complete(token, assignmentId);
+      const result = await api.complete(token, completedAssignmentId);
       mission = result.mission;
       notice = result.already_completed
         ? mode.alreadyCompletedMessage
         : mode.completionMessage(result.awarded_points);
+      if (
+        shouldRequestMissionFeedback(
+          result.player.completed_missions,
+          result.already_completed,
+        )
+      ) {
+        feedbackAssignmentId = completedAssignmentId;
+        feedbackError = "";
+      }
     });
+  }
+
+  async function submitFeedback(rating: MissionFeedbackRating) {
+    if (!session || !feedbackAssignmentId || feedbackBusy) return;
+    const token = session.token;
+    const assignmentId = feedbackAssignmentId;
+    feedbackBusy = true;
+    feedbackError = "";
+    try {
+      await api.setMissionFeedback(token, assignmentId, rating);
+      if (feedbackAssignmentId === assignmentId) {
+        feedbackAssignmentId = null;
+      }
+    } catch (err) {
+      if (feedbackAssignmentId === assignmentId) {
+        feedbackError =
+          err instanceof Error
+            ? err.message
+            : "Ton avis n’a pas été envoyé. Tu peux réessayer ou passer.";
+      }
+    } finally {
+      feedbackBusy = false;
+    }
+  }
+
+  function skipFeedback() {
+    if (feedbackBusy) return;
+    feedbackAssignmentId = null;
+    feedbackError = "";
   }
 
   async function submitProof(id: string, image: Blob): Promise<ProofResponse> {
@@ -284,6 +331,15 @@
         notice = result.completion.already_completed
           ? mode.alreadyCompletedMessage
           : `Photo validée ! ${mode.completionMessage(result.completion.awarded_points)}`;
+        if (
+          shouldRequestMissionFeedback(
+            result.completion.player.completed_missions,
+            result.completion.already_completed,
+          )
+        ) {
+          feedbackAssignmentId = id;
+          feedbackError = "";
+        }
       }
       return result;
     } finally {
@@ -320,6 +376,8 @@
       mission = null;
       chaosState = null;
       proofStatus = null;
+      feedbackAssignmentId = null;
+      feedbackError = "";
       playerId = "";
       confirmEnd = false;
     });
@@ -385,7 +443,12 @@
       {chaosState}
       {proofStatus}
       onproofsubmit={submitProof}
+      {feedbackAssignmentId}
+      {feedbackBusy}
+      {feedbackError}
       oncomplete={complete}
+      onfeedback={submitFeedback}
+      onfeedbackskip={skipFeedback}
       onrefresh={() => void sync()}
       ontabchange={(nextTab) => (tab = nextTab)}
     />

@@ -92,6 +92,13 @@ export interface ProofResponse {
   completion?: Completion;
 }
 
+export type MissionFeedbackRating = -1 | 0 | 1;
+
+export interface MissionFeedback {
+  assignment_id: string;
+  rating: MissionFeedbackRating;
+}
+
 export interface AIStatus {
   available: boolean;
   count: number;
