@@ -145,6 +145,10 @@ jobs:
   deploy-vps:
     docker:
       - image: cimg/base:stable
+    environment:
+      VPS_HOST: "51.255.38.214"
+      VPS_PORT: "2221"
+      VPS_USER: "group8"
     steps:
       - checkout
 
@@ -159,13 +163,25 @@ jobs:
           command: |
             set -Eeuo pipefail
 
+            : "${VPS_KNOWN_HOSTS:?VPS_KNOWN_HOSTS est absent}"
+
             mkdir -p "$HOME/.ssh"
             chmod 700 "$HOME/.ssh"
 
             printf '%s\n' "$VPS_KNOWN_HOSTS" \
-              > "$HOME/.ssh/known_hosts"
+            > "$HOME/.ssh/known_hosts"
 
             chmod 600 "$HOME/.ssh/known_hosts"
+
+            if ! ssh-keygen \
+              -F "[${VPS_HOST}]:${VPS_PORT}" \
+              -f "$HOME/.ssh/known_hosts" \
+              > /dev/null
+            then
+              echo "La clé du VPS est absente de VPS_KNOWN_HOSTS"
+              exit 1
+            fi
+            echo "Configuration SSH du VPS validée"
 
       - run:
           name: Déployer avec le mot de passe SSH
