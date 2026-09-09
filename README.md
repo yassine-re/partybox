@@ -273,7 +273,7 @@ Le seuil de trois validations est centralisé dans le moteur. La sélection de l
 
 ### Génération de missions par IA
 
-Dans le lobby, l’hôte peut générer un catalogue propre à sa partie pour `secret_missions` ou `treasure_hunt`. Le backend dérive le mode et le nombre de joueurs, limite le contexte libre à 300 caractères, appelle uniquement l’API OpenAI Responses avec Structured Outputs et demande explicitement `store=false`. La réponse est bornée et validée en Go avant toute écriture.
+Dans le lobby, l’hôte peut générer un catalogue propre à sa partie pour `secret_missions`, `treasure_hunt` ou `chaos`. Pour Chaos, l’IA crée uniquement les missions de base ; les événements et leurs effets restent calculés par le moteur du backend. Le backend dérive le mode et le nombre de joueurs, limite le contexte libre à 300 caractères, appelle uniquement l’API OpenAI Responses avec Structured Outputs et demande explicitement `store=false`. La réponse est bornée et validée en Go avant toute écriture.
 
 Une partie utilise exclusivement son catalogue IA lorsqu’il existe ; sinon elle garde les missions seed du même mode. Une régénération remplace l’ancien catalogue dans une transaction, avec l’événement métier correspondant. L’ancien catalogue reste intact si le fournisseur ou la validation échoue.
 

@@ -56,6 +56,17 @@ func buildUserPrompt(req GenerationRequest) string {
 - Difficulté 3 (Corsée, 20-30 pts) : objets rares, créatifs ou histoires à inventer sur place.
 - Catégories suggérées : color, object, funny, creative, exploration.
 `)
+	case models.ModeChaos:
+		sb.WriteString(`- Mode : CHAOS.
+- Les joueurs accomplissent des défis sociaux, créatifs et imprévisibles pendant que PartyBox applique séparément des événements qui modifient temporairement les règles.
+- Génère uniquement les missions de base : n'invente aucun événement Chaos, multiplicateur de points, joueur cible, échange ou mélange de missions.
+- Les défis doivent rester courts, compréhensibles seuls et réalisables même si un événement change le score ou réattribue les missions.
+- Exemples de missions : inventer un salut avec un joueur, faire applaudir le groupe, lancer un débat absurde et bienveillant, obtenir une imitation ou organiser une action collective inattendue.
+- Difficulté 1 (Facile, 10-15 pts) : interaction directe et rapide.
+- Difficulté 2 (Intermédiaire, 15-20 pts) : improvisation ou participation de plusieurs joueurs.
+- Difficulté 3 (Corsée, 20-30 pts) : défi collectif plus audacieux, toujours sûr et respectueux.
+- Catégories suggérées : interaction, improvisation, collective, conversation, creative.
+`)
 	}
 
 	sb.WriteString(`
