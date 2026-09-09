@@ -69,6 +69,29 @@ export interface Completion {
   mission: Mission | null;
 }
 
+export interface MissionProof {
+  id: string;
+  assignment_id: string;
+  verdict: "valid" | "invalid" | "uncertain";
+  confidence: number;
+  reason: string;
+  created_at: string;
+}
+
+export interface ProofStatus {
+  available: boolean;
+  assignment_id?: string;
+  attempts: number;
+  max_attempts: number;
+  remaining_attempts: number;
+  accepted: boolean;
+}
+
+export interface ProofResponse {
+  proof: MissionProof;
+  completion?: Completion;
+}
+
 export interface AIStatus {
   available: boolean;
   count: number;

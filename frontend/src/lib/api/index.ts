@@ -9,6 +9,8 @@ import type {
   GameMode,
   Mission,
   Player,
+  ProofResponse,
+  ProofStatus,
   Session,
 } from "./types";
 
@@ -57,6 +59,26 @@ async function request<T>(
 }
 
 export const api = {
+  missionProofStatus: (token: string) => request<ProofStatus>("/players/me/mission/proof", token),
+  submitMissionProof: async (token: string, assignmentId: string, image: Blob): Promise<ProofResponse> => {
+    const body = new FormData();
+    body.append("assignment_id", assignmentId);
+    body.append("image", image, "proof.jpg");
+    let response: Response;
+    try {
+      response = await fetch(`${(env.PUBLIC_API_URL || "/api").replace(/\/$/, "")}/players/me/mission/proof`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+        signal: AbortSignal.timeout(70_000),
+      });
+    } catch {
+      throw new ApiError(0, "Envoi interrompu. Réessaie : une photo déjà acceptée ne donnera pas de points en double.");
+    }
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new ApiError(response.status, data?.error?.message || "Impossible d’analyser cette photo.");
+    return data as ProofResponse;
+  },
   box: (id: string) => request<Box>(`/boxes/${encodeURIComponent(id)}`),
   create: (id: string, name: string, player_name: string, mode: GameMode) =>
     request<Session>(`/boxes/${encodeURIComponent(id)}/games`, undefined, {

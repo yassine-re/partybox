@@ -16,12 +16,14 @@ import (
 	"partybox/backend/internal/chaos"
 	"partybox/backend/internal/models"
 	"partybox/backend/internal/repositories"
+	"partybox/backend/internal/vision"
 )
 
 type Service struct {
-	Repo  *repositories.Repository
-	AI    ai.MissionGenerator
-	Chaos *chaos.Engine
+	Repo   *repositories.Repository
+	AI     ai.MissionGenerator
+	Chaos  *chaos.Engine
+	Vision vision.Validator
 
 	aiUsageMu sync.Mutex
 	aiUsage   map[string]aiGenerationUsage

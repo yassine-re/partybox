@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import type { GameMode, Mission } from "$lib/api/types";
   import { GAME_MODES, MISSION_CATEGORIES } from "$lib/game-modes";
   let {
@@ -6,7 +7,8 @@
     mode,
     busy,
     oncomplete,
-  }: { mission: Mission; mode: GameMode; busy: boolean; oncomplete: () => void } = $props();
+    actions,
+  }: { mission: Mission; mode: GameMode; busy: boolean; oncomplete: () => void; actions?: Snippet } = $props();
   let revealed = $state(true);
   const presentation = $derived(GAME_MODES[mode]);
   const visible = $derived(!presentation.canHide || revealed);
@@ -32,9 +34,13 @@
       >{["Facile", "Intermédiaire", "Corsée"][mission.difficulty - 1]}</span
     ><strong>+{mission.points} PTS</strong>
   </div>
+  {#if actions}
+    {@render actions()}
+  {:else}
   <button class="button black" disabled={busy || !visible} onclick={oncomplete}
     >{busy ? "Validation…" : presentation.actionLabel}<span aria-hidden="true">↗</span
     ></button
   >
   <p class="mission-note">{presentation.cardNote}</p>
+  {/if}
 </section>

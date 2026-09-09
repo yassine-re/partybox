@@ -11,6 +11,8 @@ x-backend: &backend
     FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     OPENAI_MODEL: ${OPENAI_MODEL:-}
+    OPENAI_VISION_MODEL: ${OPENAI_VISION_MODEL:-}
+    OPENAI_VISION_DETAIL: ${OPENAI_VISION_DETAIL:-low}
 
 services:
   postgres:
@@ -70,7 +72,7 @@ services:
       PUBLIC_API_URL: ${PUBLIC_API_URL:-/api}
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://backend:${BACKEND_PORT:-8080}}
       ORIGIN: ${FRONTEND_URL:-http://localhost:3000}
-      BODY_SIZE_LIMIT: 16K
+      BODY_SIZE_LIMIT: 6M
     ports:
       - "${FRONTEND_BIND:-0.0.0.0}:${FRONTEND_PORT:-3000}:3000"
     depends_on:
