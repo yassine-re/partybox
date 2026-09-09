@@ -14,5 +14,6 @@ __pycache__/
 *.pyc
 ml/data/
 ml/models/
+ml/artifacts/
 test-results/
 playwright-report/

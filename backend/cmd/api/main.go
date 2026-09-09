@@ -14,6 +14,7 @@ import (
 	"partybox/backend/internal/ai"
 	"partybox/backend/internal/database"
 	"partybox/backend/internal/handlers"
+	mlranker "partybox/backend/internal/ml"
 	"partybox/backend/internal/realtime"
 	"partybox/backend/internal/repositories"
 	"partybox/backend/internal/services"
@@ -62,8 +63,19 @@ func run() error {
 	} else if key != "" {
 		slog.Warn("AI mission generation disabled: OPENAI_MODEL is not configured")
 	}
+	repository := &repositories.Repository{Pool: pool}
+	rankerPath := strings.TrimSpace(os.Getenv("ML_RANKER_MODEL"))
+	if rankerPath != "" {
+		ranker, loadErr := mlranker.Load(rankerPath)
+		if loadErr != nil {
+			slog.Warn("ML mission ranking disabled", "error", loadErr)
+		} else {
+			repository.MissionScorer = ranker
+			slog.Info("ML mission ranking enabled")
+		}
+	}
 	s := &services.Service{
-		Repo: &repositories.Repository{Pool: pool},
+		Repo: repository,
 		AI:   generator,
 	}
 	visionModel := strings.TrimSpace(os.Getenv("OPENAI_VISION_MODEL"))

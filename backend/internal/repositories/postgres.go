@@ -1,17 +1,25 @@
 package repositories
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand/v2"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	mlranker "partybox/backend/internal/ml"
 	"partybox/backend/internal/models"
 )
 
-type Repository struct{ Pool *pgxpool.Pool }
+type Repository struct {
+	Pool          *pgxpool.Pool
+	MissionScorer mlranker.Scorer
+}
 
 type querier interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
@@ -33,7 +41,10 @@ func normalize(err error) error {
 	return err
 }
 
-type Transaction struct{ tx pgx.Tx }
+type Transaction struct {
+	tx            pgx.Tx
+	missionScorer mlranker.Scorer
+}
 
 func (r *Repository) Transaction(ctx context.Context, fn func(*Transaction) error) error {
 	tx, err := r.Pool.Begin(ctx)
@@ -41,7 +52,7 @@ func (r *Repository) Transaction(ctx context.Context, fn func(*Transaction) erro
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err = fn(&Transaction{tx: tx}); err != nil {
+	if err = fn(&Transaction{tx: tx, missionScorer: r.MissionScorer}); err != nil {
 		return normalize(err)
 	}
 	return normalize(tx.Commit(ctx))
@@ -147,7 +158,14 @@ func insertPlayer(ctx context.Context, q querier, gameID, name, hash string, hos
 // Prefer unseen missions, then the least recently played; never repeat immediately
 // when the catalog contains another choice. Prioritizes the game's custom AI catalog
 // if present, otherwise seamlessly falls back to seed missions for the same game mode.
-func assign(ctx context.Context, q querier, playerID string) error {
+func assign(ctx context.Context, q querier, playerID string, scorer mlranker.Scorer) error {
+	if scorer != nil {
+		return assignRanked(ctx, q, playerID, scorer)
+	}
+	return assignRandom(ctx, q, playerID)
+}
+
+func assignRandom(ctx context.Context, q querier, playerID string) error {
 	var id int
 	err := q.QueryRow(ctx, `WITH game_info AS (
 		SELECT g.id AS game_id, g.mode,
@@ -170,6 +188,95 @@ func assign(ctx context.Context, q querier, playerID string) error {
 	}
 	_, err = q.Exec(ctx, `INSERT INTO player_missions(id,player_id,mission_id) VALUES(gen_random_uuid(),$1,$2)`, playerID, id)
 	return err
+}
+
+const (
+	mlCandidateCount = 10
+	mlTopCount       = 5
+)
+
+type missionCandidate struct {
+	ID      int
+	Context mlranker.MissionContext
+	Score   float64
+}
+
+func assignRanked(ctx context.Context, q querier, playerID string, scorer mlranker.Scorer) error {
+	rows, err := q.Query(ctx, `WITH game_info AS (
+		SELECT g.id AS game_id,g.mode,
+		       EXISTS (SELECT 1 FROM missions WHERE game_id=g.id AND source='ai') AS has_ai,
+		       (SELECT count(*)::integer FROM players gp WHERE gp.game_id=g.id) AS game_size
+		FROM players p JOIN games g ON g.id=p.game_id WHERE p.id=$1
+	), eligible AS (
+		SELECT m.* FROM missions m CROSS JOIN game_info gi
+		WHERE m.mode=gi.mode
+		  AND (CASE WHEN gi.has_ai THEN (m.source='ai' AND m.game_id=gi.game_id) ELSE (m.source='seed' AND m.game_id IS NULL) END)
+	)
+	SELECT m.id,m.mode,m.category,m.difficulty,m.points,m.source,gi.game_size
+	FROM eligible m CROSS JOIN game_info gi
+	LEFT JOIN player_missions pm ON pm.mission_id=m.id AND pm.player_id=$1
+	WHERE (
+		m.id IS DISTINCT FROM (
+			SELECT previous.mission_id FROM player_missions previous
+			WHERE previous.player_id=$1 ORDER BY previous.assigned_at DESC,previous.id DESC LIMIT 1
+		) OR (SELECT count(*) FROM eligible)=1
+	) AND (
+		NOT EXISTS (
+			SELECT 1 FROM eligible unseen
+			WHERE NOT EXISTS (
+				SELECT 1 FROM player_missions seen
+				WHERE seen.player_id=$1 AND seen.mission_id=unseen.id
+			)
+		) OR NOT EXISTS (
+			SELECT 1 FROM player_missions current_seen
+			WHERE current_seen.player_id=$1 AND current_seen.mission_id=m.id
+		)
+	)
+	GROUP BY m.id,m.mode,m.category,m.difficulty,m.points,m.source,gi.game_size
+	ORDER BY max(pm.assigned_at) ASC NULLS FIRST,m.id LIMIT $2`, playerID, mlCandidateCount)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	candidates := make([]missionCandidate, 0, mlCandidateCount)
+	for rows.Next() {
+		var candidate missionCandidate
+		if err = rows.Scan(
+			&candidate.ID, &candidate.Context.Mode, &candidate.Context.Category,
+			&candidate.Context.Difficulty, &candidate.Context.Points,
+			&candidate.Context.Source, &candidate.Context.GameSize,
+		); err != nil {
+			return err
+		}
+		candidate.Score = scorer.Score(candidate.Context)
+		candidates = append(candidates, candidate)
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	if len(candidates) == 0 {
+		return fmt.Errorf("%w : aucune mission disponible, lancer le seed", models.ErrConflict)
+	}
+	id := chooseRankedCandidate(candidates, func(limit int) int { return rand.IntN(limit) })
+	_, err = q.Exec(ctx, `INSERT INTO player_missions(id,player_id,mission_id) VALUES(gen_random_uuid(),$1,$2)`, playerID, id)
+	return err
+}
+
+func chooseRankedCandidate(candidates []missionCandidate, choose func(int) int) int {
+	valid := true
+	for _, candidate := range candidates {
+		if math.IsNaN(candidate.Score) || math.IsInf(candidate.Score, 0) {
+			valid = false
+			break
+		}
+	}
+	if valid {
+		slices.SortStableFunc(candidates, func(left, right missionCandidate) int {
+			return cmp.Compare(right.Score, left.Score)
+		})
+	}
+	limit := min(mlTopCount, len(candidates))
+	return candidates[choose(limit)].ID
 }
 
 func currentMission(ctx context.Context, q querier, playerID string) (*models.Mission, error) {
