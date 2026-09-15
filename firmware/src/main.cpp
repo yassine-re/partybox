@@ -37,6 +37,11 @@ bool commandHardwareAvailable(const ReactionCommand& command) {
          configuredPin(LED_RED_PIN) && configuredPin(LED_GREEN_PIN);
 }
 
+bool apiTransportReady() {
+  if (!partyboxWiFi.connected()) return false;
+  return !String(PARTYBOX_API_BASE_URL).startsWith("https://") || partyboxWiFi.clockSynchronized();
+}
+
 void setup() {
   Serial.begin(115200);
   delay(150);
@@ -70,7 +75,7 @@ void loop() {
     previousState = reaction.state();
   }
 
-  if (partyboxWiFi.connected() && reaction.shouldReport(nowMs)) {
+  if (apiTransportReady() && reaction.shouldReport(nowMs)) {
     if (pendingEventId.isEmpty()) pendingEventId = identity.nextEventId();
     const bool delivered = api.submitReaction(reaction.outcome(), pendingEventId);
     reaction.reportAttempt(nowMs, delivered);
@@ -82,7 +87,7 @@ void loop() {
   }
 
   // Network calls are deliberately forbidden while red/green timing is active.
-  if (partyboxWiFi.connected() && reaction.state() == ReactionState::IDLE) {
+  if (apiTransportReady() && reaction.state() == ReactionState::IDLE) {
     if (static_cast<long>(nowMs - nextHeartbeatMs) >= 0) {
       api.heartbeat(nowMs, WiFi.RSSI());
       nextHeartbeatMs = nowMs + HEARTBEAT_INTERVAL_MS;

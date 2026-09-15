@@ -1,6 +1,7 @@
 #include "wifi_manager.h"
 
 #include <WiFi.h>
+#include <time.h>
 
 #include "config.h"
 
@@ -12,11 +13,22 @@ void PartyBoxWiFi::begin() {
 
 bool PartyBoxWiFi::connected() const { return WiFi.status() == WL_CONNECTED; }
 
+bool PartyBoxWiFi::clockSynchronized() const { return clockSynchronized_; }
+
 void PartyBoxWiFi::loop(unsigned long nowMs) {
   if (connected()) {
     if (!wasConnected_) {
       Serial.printf("[WIFI] connecté, IP=%s RSSI=%d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
       wasConnected_ = true;
+      if (!clockSyncStarted_) {
+        configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
+        clockSyncStarted_ = true;
+        Serial.println("[TIME] synchronisation NTP demandée");
+      }
+    }
+    if (!clockSynchronized_ && time(nullptr) >= 1704067200) {
+      clockSynchronized_ = true;
+      Serial.println("[TIME] horloge synchronisée, HTTPS autorisé");
     }
     retryMs_ = WIFI_RETRY_MIN_MS;
     return;

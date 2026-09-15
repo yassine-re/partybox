@@ -100,7 +100,7 @@ Le backend persiste le prochain déclenchement et crée aléatoirement un solo o
 
 Un appui stable avant vert produit un faux départ. Après vert, le premier front stable gagne ; après cinq secondes, le résultat est un timeout. Le terminal est renvoyé avec un `event_id` stable pendant les retries. Le backend déduplique, calcule les points, met à jour le score sans compléter de mission et notifie les téléphones par WebSocket. Le firmware confirme avec une courte LED verte puis revient en attente.
 
-La reconnexion Wi-Fi utilise un backoff 1–30 secondes. Un reboot fait repoller les commandes `pending` ou `acknowledged` non expirées. Une coupure du boîtier n’interrompt jamais la partie web.
+La reconnexion Wi-Fi utilise un backoff 1–30 secondes. Après la connexion, le firmware synchronise son horloge par NTP avant d'autoriser HTTPS, afin de vérifier correctement les dates de la chaîne TLS. Un reboot fait repoller les commandes `pending` ou `acknowledged` non expirées. Une coupure du boîtier n’interrompt jamais la partie web.
 
 Pour une démonstration plus fréquente, mettre `REACTION_MIN_INTERVAL_SECONDS=15` et `REACTION_MAX_INTERVAL_SECONDS=30`, puis recréer le conteneur backend avec `docker compose up -d --no-deps backend`.
 
@@ -113,6 +113,7 @@ Pour une démonstration plus fréquente, mettre `REACTION_MIN_INTERVAL_SECONDS=1
 - Box hors ligne dans l’UI : vérifier un heartbeat HTTP 200 et `DEVICE_ONLINE_TIMEOUT_SECONDS`.
 - HTTP 401 : reprovisionner PB001 et recopier exactement le nouveau token dans `secrets.h`.
 - Wi-Fi inaccessible : l’ESP32-S2 utilise le Wi-Fi 2,4 GHz ; vérifier SSID, mot de passe et portée.
+- `[TIME]` ne confirme jamais la synchronisation : vérifier que le réseau autorise DNS et NTP sortants ; aucun appel HTTPS n'est tenté avec une horloge invalide.
 - HTTPS refusé : installer le bon certificat racine PEM dans `PARTYBOX_TLS_ROOT_CA` et vérifier l’horloge/certificat du serveur.
 
 La batterie et sa recharge semblent gérées électroniquement par le PCB : aucune lecture ADC ou logique batterie arbitraire n’est implémentée. Le tag NFC reste passif et indépendant ; il doit simplement pointer vers `https://<domain>/box/PB001`. Aucun MQTT, WebSocket ESP, Bluetooth, PIR, NFC actif ou OTA n’est utilisé.
