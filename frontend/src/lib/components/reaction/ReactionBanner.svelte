@@ -15,7 +15,7 @@
       <span class="eyebrow">INTERRUPTION SURPRISE</span>
       <h2>Défi réaction !</h2>
       <p>{state.challenge?.status === "awaiting_assignment"
-          ? "L’hôte choisit qui prend S2 et S3."
+          ? "L’hôte choisit qui prend les boutons bleu et rouge."
           : state.challenge?.status === "awaiting_device"
             ? "Commande envoyée à la PartyBox…"
             : "Préparez-vous près de la PartyBox. Attendez la LED verte !"}</p>

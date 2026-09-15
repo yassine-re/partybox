@@ -230,16 +230,16 @@ Un simple `docker compose restart` ne recharge pas les variables d’environneme
 
 La migration `008_esp32_reaction` ajoute une identité device par box, une file de commandes HTTP, un planning persistant par partie et les challenges solo/duel. Le token ESP32 est distinct des sessions joueur et seul son hash SHA-256 est stocké. Le scheduler ne déclenche que pendant `playing`, avec un heartbeat récent et au maximum un challenge actif ; une panne du boîtier ne bloque jamais les missions web.
 
-Le backend choisit le délai rouge → vert et l’ESP32 l’exécute localement. Le serveur traduit S2/S3 vers les joueurs, calcule le score, déduplique `event_id`, verrouille la partie et persiste le score avec `reaction_challenge_resolved` dans une seule transaction. Ce chemin n’appelle jamais la completion de mission et ne déclenche donc aucun effet Chaos.
+Le backend choisit le délai rouge → vert et l’ESP32 l’exécute localement. Le serveur traduit les boutons bleu (S2) et rouge (S3) vers les joueurs, calcule le score, déduplique `event_id`, verrouille la partie et persiste le score avec `reaction_challenge_resolved` dans une seule transaction. Ce chemin n’appelle jamais la completion de mission et ne déclenche donc aucun effet Chaos.
 
 Configuration serveur :
 
 | Variable | Défaut | Rôle |
 | --- | --- | --- |
 | `REACTION_ENABLED` | `true` | Active le scheduler physique |
-| `REACTION_MIN_INTERVAL_SECONDS` | `45` | Borne basse du prochain challenge |
-| `REACTION_MAX_INTERVAL_SECONDS` | `90` | Borne haute, strictement supérieure à la borne basse |
-| `REACTION_ASSIGNMENT_TIMEOUT_SECONDS` | `45` | Temps donné à l’hôte pour assigner S2/S3 |
+| `REACTION_MIN_INTERVAL_SECONDS` | `180` | Borne basse du prochain challenge (3 minutes) |
+| `REACTION_MAX_INTERVAL_SECONDS` | `300` | Borne haute (5 minutes), strictement supérieure à la borne basse |
+| `REACTION_ASSIGNMENT_TIMEOUT_SECONDS` | `45` | Temps donné à l’hôte pour assigner les boutons |
 | `REACTION_RESULT_TIMEOUT_SECONDS` | `15` | Marge de retour après le délai local |
 | `DEVICE_ONLINE_TIMEOUT_SECONDS` | `10` | Âge maximal du dernier heartbeat |
 
@@ -270,7 +270,7 @@ Toutes les réponses applicatives sont JSON. Les routes privées exigent `Author
 | `POST /api/games/:gameId/ai-missions/generate` | Hôte dans le lobby | Ambiance, intensité, contexte et nombre ; retourne uniquement le total généré                 |
 | `POST /api/boxes/:boxId/events`         | Contrat réservé           | `{ "type": "button_press" }` → **501 Not Implemented**, aucun effet                         |
 | `GET /api/games/:gameId/reaction` | Joueur de la partie | État REST du boîtier et dernier challenge |
-| `POST /api/games/:gameId/reaction/:challengeId/assign` | Hôte | Attribue un joueur à S2/S3 et crée la commande |
+| `POST /api/games/:gameId/reaction/:challengeId/assign` | Hôte | Attribue les boutons bleu/rouge et crée la commande |
 | `POST /api/device/boxes/:boxId/heartbeat` | Token device | Présence, version firmware, uptime et RSSI |
 | `GET /api/device/boxes/:boxId/commands` | Token device | Commandes `pending`/`acknowledged` non expirées de cette box |
 | `POST /api/device/boxes/:boxId/commands/:commandId/ack` | Token device | Ack retry-safe et passage du challenge à `armed` |
@@ -454,7 +454,7 @@ La box `PB001` reste une référence de développement. Pour provisionner une au
 - Pas de présence connectée/déconnectée : le lobby liste les inscrits. Pas de fonctionnement hors ligne ; une connexion au serveur est nécessaire.
 - Les événements Chaos sont déclenchés par le nombre de validations, sans timer. Ils ne comprennent pour l’instant que Double Trouble, Bounty et Mission Shuffle.
 - Pas encore de PWA installable, service worker, push, compte email/OAuth, galerie de photos, MQTT, Redis ou modèle ML fourni en production. Le pipeline ML peut entraîner un ranker global sur les données notées réelles et l’intégration Go reste inactive sans artifact explicitement configuré.
-- Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium. Le firmware ESP32-S2 et sa logique native compilent en CI, mais le PCB physique, les GPIO inconnus, l’ESP-Prog et le parcours radio réel doivent encore être validés sur place.
+- Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium. Le PCB Insensia vB.1 a été validé sur place avec l’ESP-Prog : S2=`GPIO16`, S3=`GPIO15`, bus I²C SDA=`GPIO3`/SCL=`GPIO2`, contrôleur RGB NCP5623=`0x38` et activation D19=`GPIO33`.
 - Le tag NFC reste passif et doit être programmé séparément avec `https://<domain>/box/PB001`. Il n’existe volontairement ni OTA, MQTT, Bluetooth, lecteur NFC actif, logique batterie, PIR ou WebSocket ESP32.
 
 Références techniques : [serveur Node SvelteKit](https://svelte.dev/docs/kit/adapter-node), [Gin](https://gin-gonic.com/en/docs/quickstart/), [pgx v5](https://pkg.go.dev/github.com/jackc/pgx/v5).

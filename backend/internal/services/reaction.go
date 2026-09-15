@@ -32,7 +32,7 @@ type ReactionConfig struct {
 
 func DefaultReactionConfig() ReactionConfig {
 	return ReactionConfig{
-		Enabled: true, MinInterval: 45 * time.Second, MaxInterval: 90 * time.Second,
+		Enabled: true, MinInterval: 3 * time.Minute, MaxInterval: 5 * time.Minute,
 		AssignmentTimeout: 45 * time.Second, ResultTimeout: 15 * time.Second,
 		DeviceOnline: 10 * time.Second,
 	}
@@ -294,13 +294,13 @@ func validateReactionAssignment(ctx context.Context, tx *repositories.Transactio
 	}
 	if challenge.Kind == "solo" {
 		if (assignment.ButtonS2PlayerID == nil) == (assignment.ButtonS3PlayerID == nil) {
-			return fmt.Errorf("%w : choisir exactement un joueur sur S2 ou S3", models.ErrInvalid)
+			return fmt.Errorf("%w : choisir exactement un joueur sur le bouton bleu ou rouge", models.ErrInvalid)
 		}
 		return nil
 	}
 	if assignment.ButtonS2PlayerID == nil || assignment.ButtonS3PlayerID == nil ||
 		*assignment.ButtonS2PlayerID == *assignment.ButtonS3PlayerID {
-		return fmt.Errorf("%w : S2 et S3 doivent être attribués à deux joueurs distincts", models.ErrInvalid)
+		return fmt.Errorf("%w : les boutons bleu et rouge doivent être attribués à deux joueurs distincts", models.ErrInvalid)
 	}
 	return nil
 }

@@ -47,3 +47,10 @@ func TestParseReactionConfig(t *testing.T) {
 		t.Fatal("invalid min/max accepted")
 	}
 }
+
+func TestDefaultReactionConfigUsesOccasionalCadence(t *testing.T) {
+	config := DefaultReactionConfig()
+	if config.MinInterval != 3*time.Minute || config.MaxInterval != 5*time.Minute {
+		t.Fatalf("unexpected default cadence: %s-%s", config.MinInterval, config.MaxInterval)
+	}
+}

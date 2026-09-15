@@ -6,6 +6,12 @@
 #include "config.h"
 
 void PartyBoxWiFi::begin() {
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+      Serial.printf("[WIFI] association interrompue, raison=%d\n",
+                    info.wifi_sta_disconnected.reason);
+    }
+  });
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   Serial.println("[WIFI] gestion non bloquante initialisée");

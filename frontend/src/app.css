@@ -99,6 +99,80 @@ select {
   color: var(--pink);
   font-size: 12px;
 }
+.reaction-player-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #080a07f2;
+  backdrop-filter: blur(12px);
+}
+.reaction-player-card {
+  width: min(100%, 560px);
+  padding: clamp(30px, 7vw, 54px);
+  border: 1px solid #617a37;
+  border-radius: 18px;
+  background: var(--panel);
+  text-align: center;
+  box-shadow: 0 28px 100px #000c;
+}
+.reaction-player-card .eyebrow {
+  justify-content: center;
+}
+.reaction-player-flash {
+  display: block;
+  margin: 24px 0 10px;
+  color: var(--lime);
+  font-size: 72px;
+  line-height: 1;
+}
+.reaction-player-card h2 {
+  margin: 0;
+  font-size: clamp(2.5rem, 9vw, 4.5rem);
+}
+.reaction-player-lead {
+  margin: 12px 0 24px;
+  color: var(--muted);
+}
+.reaction-button-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  border: 1px solid #ffffff26;
+  border-radius: 999px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.reaction-button-color > span {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #777;
+  box-shadow: 0 0 18px #7778;
+}
+.reaction-player-card.blue .reaction-button-color > span {
+  background: #3f8cff;
+  box-shadow: 0 0 18px #3f8cff99;
+}
+.reaction-player-card.red .reaction-button-color > span {
+  background: #ff5364;
+  box-shadow: 0 0 18px #ff536499;
+}
+.reaction-player-instruction {
+  max-width: 410px;
+  margin: 28px auto 0;
+  font-size: 17px;
+}
+.reaction-player-resume {
+  margin: 22px 0 0;
+  color: var(--muted);
+  font: 10px/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 .reaction-result {
   border-color: var(--pink);
   background: #38232d;

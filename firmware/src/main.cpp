@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <Wire.h>
 #include <esp_timer.h>
 
 #include "api_client.h"
@@ -16,7 +17,7 @@ PartyBoxWiFi partyboxWiFi;
 ApiClient api;
 DeviceIdentity identity;
 Diagnostics diagnostics;
-ReactionLeds leds(LED_RED_PIN, LED_GREEN_PIN, LED_ACTIVE_LOW);
+ReactionLeds leds;
 DebouncedButton buttonS2(BUTTON_ACTIVE_LOW, BUTTON_DEBOUNCE_MS);
 DebouncedButton buttonS3(BUTTON_ACTIVE_LOW, BUTTON_DEBOUNCE_MS);
 ReactionGame reaction;
@@ -34,7 +35,7 @@ bool rawButtonLevel(int pin) {
 bool commandHardwareAvailable(const ReactionCommand& command) {
   return (!command.s2Enabled || configuredPin(BUTTON_S2_PIN)) &&
          (!command.s3Enabled || configuredPin(BUTTON_S3_PIN)) &&
-         configuredPin(LED_RED_PIN) && configuredPin(LED_GREEN_PIN);
+         leds.available();
 }
 
 bool apiTransportReady() {
@@ -47,6 +48,9 @@ void setup() {
   delay(150);
   Serial.printf("[BOOT] PartyBox firmware %s (%s)\n", PARTYBOX_FIRMWARE_VERSION,
                 PARTYBOX_HAS_LOCAL_SECRETS ? "configuration locale" : "configuration exemple");
+  if (configuredPin(I2C_SDA_PIN) && configuredPin(I2C_SCL_PIN)) {
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+  }
   diagnostics.begin();
   if (configuredPin(BUTTON_S2_PIN)) pinMode(BUTTON_S2_PIN, BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
   if (configuredPin(BUTTON_S3_PIN)) pinMode(BUTTON_S3_PIN, BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);

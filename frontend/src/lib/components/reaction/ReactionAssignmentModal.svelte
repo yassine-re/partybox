@@ -50,14 +50,14 @@
       </select>
       <label for="reaction-button">BOUTON PHYSIQUE</label>
       <select id="reaction-button" bind:value={soloButton}>
-        <option value="S2">S2</option><option value="S3">S3</option>
+        <option value="S2">Bouton bleu</option><option value="S3">Bouton rouge</option>
       </select>
     {:else}
-      <label for="reaction-s2">JOUEUR SUR S2</label>
+      <label for="reaction-s2">JOUEUR — BOUTON BLEU</label>
       <select id="reaction-s2" bind:value={s2Player}>
         {#each players as player}<option value={player.id}>{player.name}</option>{/each}
       </select>
-      <label for="reaction-s3">JOUEUR SUR S3</label>
+      <label for="reaction-s3">JOUEUR — BOUTON ROUGE</label>
       <select id="reaction-s3" bind:value={s3Player}>
         {#each players as player}<option value={player.id}>{player.name}</option>{/each}
       </select>

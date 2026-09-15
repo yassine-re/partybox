@@ -19,6 +19,7 @@
   import MissionFeedback from "./MissionFeedback.svelte";
   import ReactionBanner from "../reaction/ReactionBanner.svelte";
   import ReactionAssignmentModal from "../reaction/ReactionAssignmentModal.svelte";
+  import ReactionPlayerOverlay from "../reaction/ReactionPlayerOverlay.svelte";
   import ReactionResult from "../reaction/ReactionResult.svelte";
   import { canAssignReaction } from "$lib/reaction";
 
@@ -97,6 +98,9 @@
     {busy}
     onassign={(assignment) => onreactionassign(reactionChallenge.id, assignment)}
   />
+{/if}
+{#if reactionChallenge}
+  <ReactionPlayerOverlay challenge={reactionChallenge} {playerId} />
 {/if}
 <div class="game-grid play-grid">
   <div class:mobile-hidden={tab !== "mission"}>
