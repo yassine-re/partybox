@@ -24,6 +24,7 @@ ReactionGame reaction;
 
 unsigned long nextHeartbeatMs = 0;
 unsigned long nextPollMs = 0;
+bool backendReady = false;
 String pendingEventId;
 ReactionState previousState = ReactionState::IDLE;
 
@@ -43,6 +44,19 @@ bool apiTransportReady() {
   return !String(PARTYBOX_API_BASE_URL).startsWith("https://") || partyboxWiFi.clockSynchronized();
 }
 
+bool resetWiFiRequested() {
+  if (!configuredPin(BUTTON_S2_PIN) || !configuredPin(BUTTON_S3_PIN) ||
+      rawButtonLevel(BUTTON_S2_PIN) != (BUTTON_ACTIVE_LOW ? LOW : HIGH) ||
+      rawButtonLevel(BUTTON_S3_PIN) != (BUTTON_ACTIVE_LOW ? LOW : HIGH)) return false;
+  const unsigned long startedMs = millis();
+  while (millis() - startedMs < 5000) {
+    if (rawButtonLevel(BUTTON_S2_PIN) != (BUTTON_ACTIVE_LOW ? LOW : HIGH) ||
+        rawButtonLevel(BUTTON_S3_PIN) != (BUTTON_ACTIVE_LOW ? LOW : HIGH)) return false;
+    delay(20);
+  }
+  return true;
+}
+
 void setup() {
   Serial.begin(115200);
   delay(150);
@@ -57,7 +71,7 @@ void setup() {
   leds.begin();
   identity.begin();
 #if PARTYBOX_NETWORK_ENABLED
-  partyboxWiFi.begin();
+  partyboxWiFi.begin(resetWiFiRequested());
 #else
   Serial.println("[BOOT] build série/diagnostic : réseau désactivé");
 #endif
@@ -68,11 +82,15 @@ void loop() {
   const bool s2Edge = buttonS2.update(rawButtonLevel(BUTTON_S2_PIN), nowMs);
   const bool s3Edge = buttonS3.update(rawButtonLevel(BUTTON_S3_PIN), nowMs);
   reaction.update(esp_timer_get_time(), s2Edge, s3Edge, buttonS2.pressed(), buttonS3.pressed());
-  leds.set(reaction.redOn(), reaction.greenOn());
+#if PARTYBOX_NETWORK_ENABLED
+  partyboxWiFi.loop(nowMs);
+  if (!apiTransportReady()) backendReady = false;
+#endif
+  leds.set(reaction.redOn(), reaction.greenOn() ||
+           (reaction.state() == ReactionState::IDLE && backendReady));
   leds.loop(nowMs);
   diagnostics.loop(nowMs);
 #if PARTYBOX_NETWORK_ENABLED
-  partyboxWiFi.loop(nowMs);
 
   if (reaction.state() != previousState) {
     Serial.printf("[REACTION] état %d -> %d\n", static_cast<int>(previousState), static_cast<int>(reaction.state()));
@@ -93,7 +111,7 @@ void loop() {
   // Network calls are deliberately forbidden while red/green timing is active.
   if (apiTransportReady() && reaction.state() == ReactionState::IDLE) {
     if (static_cast<long>(nowMs - nextHeartbeatMs) >= 0) {
-      api.heartbeat(nowMs, WiFi.RSSI());
+      backendReady = api.heartbeat(nowMs, WiFi.RSSI());
       nextHeartbeatMs = nowMs + HEARTBEAT_INTERVAL_MS;
     }
     if (static_cast<long>(nowMs - nextPollMs) >= 0) {
