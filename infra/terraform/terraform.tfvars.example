@@ -1,0 +1,5 @@
+# Adapter ces valeurs avant terraform plan/apply.
+name_prefix         = "partybox"
+vm_size             = "Standard_B2als_v2"
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+ssh_source_cidr     = "203.0.113.4/32"

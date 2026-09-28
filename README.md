@@ -432,18 +432,70 @@ Depuis la racine : `docker compose config --quiet` et `docker compose up --build
 
 ## VPS Linux et Caddy
 
-Une configuration de déploiement est préparée, sans déploiement public effectué. Sur un VPS disposant de Docker et Compose :
+### Provisionner une VM Azure avec Terraform
 
-1. Cloner le dépôt et créer `.env`. Choisir un mot de passe PostgreSQL propre à ce serveur et le reporter dans `DATABASE_URL`.
-2. Faire pointer le DNS de `DOMAIN` vers le VPS. Renseigner un véritable `ACME_EMAIL`.
-3. Définir `FRONTEND_URL=https://<domaine>`, `PUBLIC_API_URL=/api` et `FRONTEND_BIND=127.0.0.1`.
+Le dossier `infra/terraform/` crée une VM Ubuntu 24.04 x64 dans `spaincentral`, son réseau, une IP publique statique et un pare-feu Azure. L'accès SSH est limité au CIDR indiqué ; seuls les ports 80 et 443 sont ouverts à Internet. Terraform ne configure pas Docker, l'application, les secrets ni le DNS.
+
+Prérequis : Azure CLI, Terraform >= 1.6, une clé SSH publique et un abonnement Azure actif. Depuis `infra/terraform/` :
+
+```sh
+az login
+az account set --subscription "<ID_OU_NOM_ABONNEMENT>"
+export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+cp terraform.tfvars.example terraform.tfvars
+```
+
+Dans `terraform.tfvars`, remplacer `ssh_source_cidr` par votre IP publique suivie de `/32` et vérifier `ssh_public_key_path`. Vérifier également que `vm_size` est disponible pour l'abonnement en Spain Central et que son coût entre dans votre budget. La VM n'est pas rattachée à une zone précise, comme dans l'exemple de TP qui fonctionne. `Standard_B2als_v2` est une valeur de départ ; les quotas de l'abonnement et la capacité régionale peuvent toujours empêcher un déploiement.
+
+```sh
+az vm list-skus --location spaincentral --resource-type virtualMachines --all --output table
+terraform init
+terraform validate
+terraform plan -out=partybox.tfplan
+terraform apply partybox.tfplan
+terraform output public_ip
+terraform output ssh_command
+```
+
+Faire pointer un enregistrement DNS `A` vers l'IP affichée, puis préparer Docker Compose, `.env.production` et Caddy sur la VM. Ne pas ouvrir les ports PostgreSQL, backend ou frontend dans le pare-feu Azure.
+
+Le fichier d'état Terraform est local et ignoré par Git : le conserver en lieu sûr, car il est nécessaire pour gérer ou détruire ces ressources et peut contenir des données sensibles. Configurer une alerte de budget Azure ; une VM, son disque et l'IP publique peuvent consommer le crédit étudiant même lorsque l'application est arrêtée. Pour supprimer les ressources et arrêter leur facturation :
+
+```sh
+terraform destroy
+```
+
+Vérifier le plan de destruction avant de confirmer : il supprime aussi le disque de la VM et ses données. Sauvegarder PostgreSQL au préalable.
+
+### Déploiement avec Docker Compose
+
+Sur une VM disposant de Docker et Compose :
+
+1. Cloner le dépôt dans `~/partybox` et créer `.env.production`. Choisir un mot de passe PostgreSQL propre à ce serveur et le reporter dans `DATABASE_URL`.
+2. Faire pointer le DNS de `DOMAIN` vers la VM. Renseigner un véritable `ACME_EMAIL`.
+3. Définir `FRONTEND_URL=https://<domaine>`, `PUBLIC_API_URL=/api`, `FRONTEND_BIND=127.0.0.1` et `FRONTEND_PORT=3008`.
 4. Ouvrir les ports 80 et 443, puis lancer :
 
 ```sh
-docker compose --profile production up --build -d
+docker compose --env-file .env.production --profile production up --build -d
 ```
 
 Caddy termine HTTPS, conserve ses certificats dans un volume et transmet au frontend. Go reste dans le réseau privé. Les ports publiés de PostgreSQL et du frontend sont limités à la boucle locale du VPS. Pour administrer la base depuis un autre ordinateur, utiliser un tunnel SSH vers son port local. Prévoir les sauvegardes PostgreSQL et leur restauration avant une utilisation réelle. `sslmode=disable` concerne les connexions locales de cette configuration ; une base distante doit utiliser TLS.
+
+### Déploiement CircleCI sur Azure
+
+Le job de déploiement s'exécute sur le runner auto-hébergé `partybox/azure-vm`, installé sur la VM de production. Le runner doit être en ligne dans CircleCI, son compte système `circleci` doit pouvoir exécuter Docker et accéder au dépôt de production `/home/partybox/partybox` ainsi qu'à `.env.production`. Le script utilise `PARTYBOX_APP_DIR` pour pointer vers ce dépôt. Le runner effectue le déploiement localement ; aucune connexion SSH depuis CircleCI ni ouverture supplémentaire dans le NSG n'est requise.
+
+Sur la VM, le compte `circleci` doit pouvoir traverser `/home/partybox`, lire `.env.production` et écrire dans le dépôt (notamment dans `.git`, pour récupérer le tag). Le runner est autorisé à lire la configuration de production et à contrôler Docker : réserver cette resource class au workflow de release de confiance. Garder `.env.production` hors du dépôt.
+
+Dans CircleCI, créer deux contextes séparés :
+
+- `partybox-ghcr` pour le job de publication, avec `GHCR_USERNAME` et `GHCR_TOKEN` (droit `write:packages`).
+- `partybox-public-health` pour le contrôle externe après déploiement, avec `PUBLIC_URL=https://partybox.dev` (sans barre finale).
+
+Les packages d'images `partybox-backend` et `partybox-frontend` doivent être configurés en visibilité publique dans GHCR ; leur téléchargement par Docker ne demande alors pas de jeton. Le jeton `write:packages` reste nécessaire à CircleCI pour publier les nouvelles images. La classe `partybox/azure-vm` dans `.circleci/config.yml` doit correspondre exactement à celle créée dans CircleCI.
+
+Un tag `vX.Y.Z` pointant vers `main` déclenche les tests, la publication des images GHCR, puis une approbation manuelle. Après approbation, le runner exécute `infra/deploy.sh` sur la VM : le script récupère le tag dans `/home/partybox/partybox`, tire les images et démarre Compose avec le profil `production` pour inclure Caddy. Un job CircleCI hébergé vérifie ensuite `${PUBLIC_URL}/api/health` depuis l'extérieur.
 
 La box `PB001` reste une référence de développement. Pour provisionner une autre box, l’insérer en base avec un identifiant unique, puis programmer le tag NFC avec `/box/<identifiant>`. Le MVP ne contient pas d’interface d’administration des boxes.
 

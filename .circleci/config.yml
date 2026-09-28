@@ -163,68 +163,32 @@ jobs:
             docker push "${frontend}:${CIRCLE_TAG}"
             docker push "${frontend}:sha-${CIRCLE_SHA1}"
 
-  deploy-vps:
-    docker:
-      - image: cimg/base:stable
+  deploy-azure:
+    machine: true
+    resource_class: partybox/azure-vm
     environment:
-      VPS_HOST: "51.255.38.214"
-      VPS_PORT: "2221"
-      VPS_USER: "group8"
+      PARTYBOX_APP_DIR: /home/partybox/partybox
     steps:
       - checkout
 
       - run:
-          name: Installer sshpass
-          command: |
-            sudo apt-get update
-            sudo apt-get install --yes sshpass
-
-      - run:
-          name: Configurer la vérification du VPS
+          name: Déployer sur la VM Azure
           command: |
             set -Eeuo pipefail
 
-            : "${VPS_KNOWN_HOSTS:?VPS_KNOWN_HOSTS est absent}"
+            : "${PARTYBOX_APP_DIR:?PARTYBOX_APP_DIR est absent}"
 
-            mkdir -p "$HOME/.ssh"
-            chmod 700 "$HOME/.ssh"
+            ./infra/deploy.sh "$CIRCLE_TAG"
 
-            printf '%s\n' "$VPS_KNOWN_HOSTS" \
-            > "$HOME/.ssh/known_hosts"
-
-            chmod 600 "$HOME/.ssh/known_hosts"
-
-            if ! ssh-keygen \
-              -F "[${VPS_HOST}]:${VPS_PORT}" \
-              -f "$HOME/.ssh/known_hosts" \
-              > /dev/null
-            then
-              echo "La clé du VPS est absente de VPS_KNOWN_HOSTS"
-              exit 1
-            fi
-            echo "Configuration SSH du VPS validée"
-
-      - run:
-          name: Déployer avec le mot de passe SSH
-          command: |
-            set -Eeuo pipefail
-
-            export SSHPASS="$VPS_PASSWORD"
-
-            sshpass -e ssh \
-              -o PubkeyAuthentication=no \
-              -o PreferredAuthentications=password \
-              -o NumberOfPasswordPrompts=1 \
-              -o StrictHostKeyChecking=yes \
-              -o ConnectTimeout=15 \
-              -p "$VPS_PORT" \
-              "$VPS_USER@$VPS_HOST" \
-              "bash -s -- '$CIRCLE_TAG'" \
-              < infra/deploy.sh
-
+  verify-production:
+    docker:
+      - image: cimg/base:stable
+    steps:
       - run:
           name: Vérifier le site public
           command: |
+            set -Eeuo pipefail
+            : "${PUBLIC_URL:?PUBLIC_URL est absent}"
             curl \
               --fail \
               --show-error \
@@ -267,7 +231,7 @@ workflows:
             - test-frontend
             - test-firmware
           context:
-            - partybox-production
+            - partybox-ghcr
           filters: *release-filter
 
       - approve-production:
@@ -276,9 +240,14 @@ workflows:
             - build-and-push
           filters: *release-filter
 
-      - deploy-vps:
+      - deploy-azure:
           requires:
             - approve-production
+          filters: *release-filter
+
+      - verify-production:
+          requires:
+            - deploy-azure
           context:
-            - partybox-production
+            - partybox-public-health
           filters: *release-filter

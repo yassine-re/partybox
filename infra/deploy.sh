@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 tag="${1:-}"
-app_dir="${HOME}/partybox"
+app_dir="${PARTYBOX_APP_DIR:-${HOME}/partybox}"
 
 if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Tag invalide : $tag"
@@ -17,8 +17,10 @@ if [[ ! -f .env.production ]]; then
 fi
 
 echo "Récupération du tag $tag"
-git fetch --force origin "refs/tags/${tag}:refs/tags/${tag}"
-git checkout --detach "$tag"
+git -c safe.directory="$app_dir" -C "$app_dir" \
+  fetch --force origin "refs/tags/${tag}:refs/tags/${tag}"
+git -c safe.directory="$app_dir" -C "$app_dir" \
+  checkout --detach "$tag"
 
 export BACKEND_IMAGE="ghcr.io/yassine-re/partybox-backend:${tag}"
 export FRONTEND_IMAGE="ghcr.io/yassine-re/partybox-frontend:${tag}"
@@ -26,6 +28,7 @@ export FRONTEND_IMAGE="ghcr.io/yassine-re/partybox-frontend:${tag}"
 compose=(
   docker compose
   --env-file .env.production
+  --profile production
 )
 
 echo "Téléchargement des images Docker"
