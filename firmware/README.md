@@ -12,7 +12,19 @@ Copier le fichier exemple, qui est le seul fichier de secrets versionné :
 cp firmware/include/secrets.example.h firmware/include/secrets.h
 ```
 
-Renseigner dans `secrets.h` le SSID, le mot de passe Wi-Fi, l’URL publique HTTPS sans slash final, `PB001`, le token device et le certificat racine PEM de l’API. `secrets.h` est ignoré par Git. Le client refuse volontairement HTTPS lorsque `PARTYBOX_TLS_ROOT_CA` est vide ; il ne bascule jamais silencieusement vers une validation TLS non sûre. Aucun log ne contient le mot de passe ou le token.
+Renseigner dans `secrets.h` un `PARTYBOX_SETUP_PASSWORD` différent pour chaque box (8 à 63 caractères ASCII imprimables), l’URL publique HTTPS sans slash final, l’identifiant propre à la box, son token device et le certificat racine PEM de l’API. `secrets.h` est ignoré par Git. Le client refuse volontairement HTTPS lorsque `PARTYBOX_TLS_ROOT_CA` est vide ; il ne bascule jamais silencieusement vers une validation TLS non sûre. Aucun log ne contient les mots de passe ou le token.
+
+**Fabrication :** provisionner et flasher chaque box avec son propre mot de passe de configuration, puis reporter ce mot de passe et le nom `PartyBox-<MAC Wi-Fi sans séparateurs>` sur une étiquette ou une carte fournie avec l’appareil. Ne jamais distribuer un firmware avec un mot de passe de configuration commun ou vide. Le Wi-Fi du client n’est ni dans ce fichier ni dans le binaire ; il est saisi depuis le téléphone et sauvegardé dans la NVS de la box. Le mot de passe de configuration est un secret propre à l’appareil et reste nécessaire pour reconfigurer le Wi-Fi. Le token device doit également être unique par box.
+
+**Avant commercialisation :** cette version ne configure pas Secure Boot ni le chiffrement du flash. Les identifiants enregistrés en NVS et les secrets propres à l’appareil ne sont donc pas protégés contre une extraction physique de la mémoire flash. Il faudra intégrer et valider les protections de production ESP32-S2 ainsi qu’un processus de fabrication par unité avant toute distribution commerciale.
+
+## Configurer le Wi-Fi depuis un téléphone
+
+Au premier démarrage sans Wi-Fi enregistré, la box crée son réseau `PartyBox-<MAC>`. Connecter le téléphone à ce réseau avec le mot de passe inscrit sur l’étiquette. Le portail captif peut alors s’ouvrir automatiquement sur le téléphone avec une page aux couleurs de PartyBox. Cette ouverture dépend d’iOS/Android et des réglages du téléphone : si aucune page ne s’affiche, ouvrir `http://192.168.4.1` dans un navigateur. Saisir le nom et le mot de passe du réseau Wi-Fi **2,4 GHz** du client. Un réseau ouvert est possible en laissant le mot de passe vide. La box essaie la connexion pendant 20 secondes : si elle réussit, elle enregistre les identifiants localement et ferme son réseau temporaire. En cas d’échec, le portail reste ouvert pour corriger la saisie. Le téléphone peut signaler « pas d’accès Internet » pendant cette étape ; il faut rester connecté au réseau PartyBox.
+
+La LED D19 s’allume en vert lorsque la box est connectée au Wi-Fi **et** que son heartbeat a été accepté par l’API. Elle s’éteint si la connexion est perdue ou si un heartbeat échoue. Pendant un challenge, les signaux rouge/vert du jeu prennent la priorité ; le vert de disponibilité revient au repos si le dernier heartbeat a réussi. Une simple connexion Wi-Fi sans URL API, token ou certificat valide ne suffit pas à indiquer que la box est prête.
+
+Pour changer de réseau, éteindre la box, maintenir **S2 et S3 simultanément**, puis la rallumer en gardant les deux boutons enfoncés pendant **5 secondes**. Cela efface uniquement les identifiants Wi-Fi enregistrés et rouvre le portail. Le geste est détecté au démarrage, avant toute commande de réaction ; les appuis pendant une partie gardent leur fonction de jeu. Si le mot de passe du point d’accès est perdu, une intervention de fabrication ou de support est nécessaire pour reprogrammer le secret de configuration propre à la box.
 
 Le pinout mesuré est centralisé dans `include/board_config.h` :
 
@@ -49,7 +61,7 @@ Procéder par étapes, alimentation coupée pendant toute modification du câbla
 2. Lancer `pio device list`, puis compiler le build série sans réseau : `pio run -d firmware -e esp32s2-serial`.
 3. Mettre la carte en bootloader avec les commandes EN/IO0 du programmateur si nécessaire, puis flasher : `pio run -d firmware -e esp32s2-serial -t upload --upload-port <PORT>`.
 4. Ouvrir le moniteur à 115200 bauds. Vérifier les logs `[BOOT]`, le modèle, le reset reason, les 4 MB de flash et la PSRAM détectée. À ce stade aucun GPIO inconnu n’est piloté.
-5. Renseigner uniquement le Wi-Fi dans `secrets.h`, compiler `esp32s2` et observer `[WIFI]`. Une URL API volontairement non renseignée permet de tester le Wi-Fi seul.
+5. Renseigner un mot de passe de configuration unique dans `secrets.h`, compiler `esp32s2`, puis configurer le Wi-Fi depuis le portail sur le téléphone. Observer `[WIFI]`. Une URL API volontairement non renseignée permet de tester le Wi-Fi seul.
 6. Provisionner le device côté backend, renseigner l’URL, le token et le certificat, reflasher puis vérifier `[HEARTBEAT] HTTP 200`.
 7. Vérifier dans les logs S2=`GPIO16`, S3=`GPIO15`, le NCP5623 à `0x38` et `[RGB] NCP5623 prêt`.
 8. Tester enfin un challenge complet.
@@ -115,6 +127,8 @@ Pour une démonstration plus fréquente, mettre `REACTION_MIN_INTERVAL_SECONDS=1
 - Box hors ligne dans l’UI : vérifier un heartbeat HTTP 200 et `DEVICE_ONLINE_TIMEOUT_SECONDS`.
 - HTTP 401 : reprovisionner PB001 et recopier exactement le nouveau token dans `secrets.h`.
 - Wi-Fi inaccessible : l’ESP32-S2 utilise le Wi-Fi 2,4 GHz ; vérifier SSID, mot de passe et portée.
+- Aucun réseau `PartyBox-<MAC>` au premier démarrage : vérifier que `PARTYBOX_SETUP_PASSWORD` est unique et renseigné dans `secrets.h`, puis consulter les logs `[ERROR]`.
+- Réseau `PartyBox-<MAC>` toujours visible après saisie : ouvrir `http://192.168.4.1/status`, corriger les identifiants si la connexion a échoué. Si la box a déjà un Wi-Fi enregistré, utiliser la procédure S2+S3 au démarrage.
 - `[TIME]` ne confirme jamais la synchronisation : vérifier que le réseau autorise DNS et NTP sortants ; aucun appel HTTPS n'est tenté avec une horloge invalide.
 - HTTPS refusé : installer le bon certificat racine PEM dans `PARTYBOX_TLS_ROOT_CA` et vérifier l’horloge/certificat du serveur.
 
