@@ -75,6 +75,11 @@ type Completion struct {
 	ValidationPending bool     `json:"validation_pending,omitempty"`
 }
 
+type MissionSkip struct {
+	Player  Player  `json:"player"`
+	Mission Mission `json:"mission"`
+}
+
 type GameOptions struct {
 	DurationMinutes       int    `json:"duration_minutes"`
 	LeaderboardVisibility string `json:"leaderboard_visibility"`

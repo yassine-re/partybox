@@ -249,7 +249,7 @@ Provisionner `PB001` après les migrations avec `docker compose run --rm --entry
 
 ## Durée et déroulement d’une partie
 
-Une partie peut durer **15 minutes (Express)**, **30 minutes (Classique, durée par défaut)**, **60 minutes (Longue)** ou rester ouverte **toute la soirée (∞)**. Le serveur enregistre le choix et l’heure de fin au lancement. Les parties chronométrées se terminent automatiquement à l’échéance, même si aucun joueur n’est connecté ; l’hôte peut aussi les terminer manuellement. Pendant la dernière minute, les missions validées rapportent réellement le double de points. Les parties infinies n’ont ni échéance ni multiplicateur.
+Une partie peut durer **5 minutes (Flash)**, **15 minutes (Express)**, **30 minutes (Classique, durée par défaut)**, **60 minutes (Longue)** ou rester ouverte **toute la soirée (∞)**. Le serveur enregistre le choix et l’heure de fin au lancement. Les parties chronométrées se terminent automatiquement à l’échéance, même si aucun joueur n’est connecté ; l’hôte peut aussi les terminer manuellement. Pendant la dernière minute, les missions validées rapportent réellement le double de points. Les parties infinies n’ont ni échéance ni multiplicateur.
 
 À cinq minutes de la fin, les joueurs reçoivent une notification ; à une minute, l’interface passe en phase finale. Le compte à rebours affiché est basé sur l’échéance renvoyée par le serveur et se recale après reconnexion. En mode Chaos, les événements conservent leurs effets habituels et leur fréquence augmente dans le dernier tiers puis pendant la dernière minute.
 

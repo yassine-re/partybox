@@ -9,8 +9,9 @@
     busy,
     validationPending = false,
     oncomplete,
+    onskip,
     actions,
-  }: { mission: Mission; mode: GameMode; busy: boolean; validationPending?: boolean; oncomplete: () => void; actions?: Snippet } = $props();
+  }: { mission: Mission; mode: GameMode; busy: boolean; validationPending?: boolean; oncomplete: () => void; onskip?: () => void; actions?: Snippet } = $props();
   let revealed = $state(false);
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
   const presentation = $derived(GAME_MODES[mode]);
@@ -70,9 +71,16 @@
     {@render actions()}
   {:else}
   <button class="button black" disabled={busy || !visible} onclick={oncomplete}
-    >{validationPending ? "En attente d’un autre joueur…" : busy ? "Validation…" : presentation.actionLabel}<span aria-hidden="true">↗</span
-    ></button
+    >{validationPending ? "En attente de confirmation" : busy ? "Validation…" : presentation.actionLabel}<span aria-hidden="true">↗</span
+  ></button
   >
-  <p class="mission-note">{presentation.cardNote}</p>
+  <p class="mission-note">{validationPending ? "Ta demande a été envoyée. Un autre joueur doit confirmer cette mission." : presentation.cardNote}</p>
+  {/if}
+  {#if mode === "treasure_hunt" && onskip}
+    <button class="text-button dark-text skip-mission" disabled={busy} onclick={onskip}>Impossible à trouver ? Passer cette recherche</button>
   {/if}
 </section>
+
+<style>
+  .skip-mission { justify-self: center; margin-top: 4px; text-decoration: underline; text-underline-offset: 3px; }
+</style>

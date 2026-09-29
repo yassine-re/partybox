@@ -162,7 +162,7 @@
       {#if proof.verdict === "uncertain"}<p>Essaie une photo plus claire ou mieux cadrée.</p>{/if}
     </div>
   {/if}
-  {#if error}<p role="alert">{error}</p>{/if}
+  {#if error}<p role="alert">{error} Réessaie l’analyse, ou passe cette recherche si l’objet est introuvable. Actualise la partie si tu penses que la photo a déjà été acceptée.</p>{/if}
   {#if status.accepted}
     <button class="button black" disabled={disabled} onclick={oncomplete}>Photo acceptée · terminer la validation ↗</button>
   {:else if exhausted}

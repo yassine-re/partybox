@@ -102,7 +102,7 @@
           <summary>Personnaliser la partie</summary>
           <fieldset class="duration-options" disabled={busy}>
             <legend>Durée de la partie</legend>
-            {#each [{ value: 15, label: "15 min", hint: "Express" }, { value: 30, label: "30 min", hint: "Classique" }, { value: 60, label: "60 min", hint: "Longue" }, { value: 0, label: "∞", hint: "Toute la soirée" }] as option}
+            {#each [{ value: 5, label: "5 min", hint: "Flash" }, { value: 15, label: "15 min", hint: "Express" }, { value: 30, label: "30 min", hint: "Classique" }, { value: 60, label: "60 min", hint: "Longue" }, { value: 0, label: "∞", hint: "Toute la soirée" }] as option}
               <label class:selected={durationMinutes === option.value}>
                 <input type="radio" name="duration" value={option.value} bind:group={durationMinutes} />
                 <strong>{option.label}</strong><small>{option.hint}</small>

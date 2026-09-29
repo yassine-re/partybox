@@ -46,7 +46,7 @@ func flowMission(t *testing.T, router http.Handler, token string) models.Mission
 }
 
 func TestGameDurationsAndAutomaticFinish(t *testing.T) {
-	for _, duration := range []int{15, 30, 60, 0} {
+	for _, duration := range []int{5, 15, 30, 60, 0} {
 		t.Run(fmt.Sprint(duration), func(t *testing.T) {
 			s, router := flowRouter(t)
 			now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)

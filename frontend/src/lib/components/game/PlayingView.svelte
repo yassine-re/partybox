@@ -35,6 +35,7 @@
     realtimeStatus,
     tab,
     oncomplete,
+    onskipmission = () => {},
     onrefresh,
     ontabchange,
     feedbackAssignmentId = null,
@@ -59,6 +60,7 @@
     realtimeStatus: RealtimeStatus;
     tab: GameTab;
     oncomplete: () => void;
+    onskipmission?: () => void;
     onrefresh: () => void;
     ontabchange: (tab: GameTab) => void;
     feedbackAssignmentId?: string | null;
@@ -189,8 +191,9 @@
         {mission}
         mode={game.mode}
         busy={missionBusy}
-        validationPending
+        validationPending={validationPending}
         oncomplete={oncomplete}
+        onskip={game.mode === "treasure_hunt" ? onskipmission : undefined}
         actions={game.mode === "treasure_hunt" && proofStatus?.available ? photoActions : undefined}
       />{:else}<section class="panel">
         <h2>{mode.loadingText}</h2>

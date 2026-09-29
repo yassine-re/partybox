@@ -121,6 +121,10 @@ export const api = {
     request<Completion>("/players/me/mission/complete", token, {
       assignment_id,
     }),
+  skipMission: (token: string, assignment_id: string) =>
+    request<{ mission: Mission; player: Player }>("/players/me/mission/skip", token, {
+      assignment_id,
+    }),
   setMissionFeedback: (
     token: string,
     assignmentId: string,
