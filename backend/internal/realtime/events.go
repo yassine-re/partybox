@@ -5,10 +5,16 @@ import "time"
 type EventType string
 
 const (
-	EventPlayerJoined     EventType = "player_joined"
-	EventGameStarted      EventType = "game_started"
-	EventMissionCompleted EventType = "mission_completed"
-	EventGameEnded        EventType = "game_ended"
+	EventPlayerJoined              EventType = "player_joined"
+	EventGameStarted               EventType = "game_started"
+	EventMissionCompleted          EventType = "mission_completed"
+	EventGameEnded                 EventType = "game_ended"
+	EventFiveMinutes               EventType = "five_minutes_remaining"
+	EventFinalMinute               EventType = "final_minute"
+	EventValidationRequested       EventType = "validation_requested"
+	EventValidationResolved        EventType = "validation_resolved"
+	EventChaosChanged              EventType = "chaos_changed"
+	EventLeaderboardChanged        EventType = "leaderboard_changed"
 	EventReactionChallengeChanged  EventType = "reaction_challenge_changed"
 	EventReactionChallengeResolved EventType = "reaction_challenge_resolved"
 )

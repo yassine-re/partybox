@@ -14,7 +14,7 @@
     <label class="mode-option" class:selected={value === mode.id}>
       <input type="radio" name="game-mode" value={mode.id} bind:group={value} />
       <span class="mode-symbol" aria-hidden="true">{mode.symbol}</span>
-      <span class="mode-copy"><strong>{mode.label}</strong><small>{mode.description}</small></span>
+      <span class="mode-copy"><strong>{mode.label}</strong><small>{mode.description}</small><small class="example">{mode.example}</small></span>
       <span class="selection-mark" aria-hidden="true">{value === mode.id ? "✓" : "○"}</span>
     </label>
   {/each}
@@ -31,6 +31,7 @@
   .mode-copy { flex: 1; min-width: 0; font-family: "Avenir Next", "Trebuchet MS", sans-serif; }
   strong { display: block; font-size: 15px; color: var(--text); }
   small { display: block; color: var(--muted); font-size: 11px; line-height: 1.6; font-weight: 400; margin-top: 6px; }
+  small.example { color: var(--lime); opacity: .85; }
   .selection-mark { color: var(--lime); font-size: 18px; }
   fieldset:disabled { opacity: .6; }
   fieldset:disabled .mode-option { cursor: wait; }

@@ -97,6 +97,8 @@ Le dossier courant est directement la racine PartyBox, même s’il porte un aut
 │   ├── migrations/005_chaos_mode.{up,down}.sql
 │   ├── migrations/006_treasure_photo_validation.{up,down}.sql
 │   ├── migrations/007_mission_feedback.{up,down}.sql
+│   ├── migrations/008_esp32_reaction.{up,down}.sql
+│   ├── migrations/009_game_flow.{up,down}.sql
 │   └── seed.sql
 ├── firmware/
 │   ├── platformio.ini
@@ -179,7 +181,7 @@ docker compose run --rm seed
 
 Le seed insère `PB001`, 18 missions secrètes, 15 défis de chasse au trésor et 15 missions Chaos avec points, catégorie et difficulté (1 à 3), sans dupliquer les lignes ni remplacer les données existantes. Les missions déjà jouées sont évitées tant qu’il reste des missions inédites dans le mode choisi ; après épuisement du catalogue, la moins récemment attribuée revient.
 
-Les migrations `004_ai_missions` et `005_chaos_mode` restent séparées afin que les catalogues IA et l’état Chaos puissent évoluer indépendamment. `007_mission_feedback` crée la table de notation ; le numéro `006` est volontairement réservé à la branche de validation photo Treasure Hunt.
+Les migrations `004_ai_missions` et `005_chaos_mode` restent séparées afin que les catalogues IA et l’état Chaos puissent évoluer indépendamment. `007_mission_feedback` crée la table de notation ; `008_esp32_reaction` ajoute le mini-jeu physique et `009_game_flow` ajoute les durées, les réglages de classement et les demandes de validation.
 
 Le fichier `.down.sql` est fourni pour un retour arrière manuel. Le binaire n’exécute pas de rollback automatique. Le rollback de `004_ai_missions` supprime les catalogues IA et leurs attributions, car l’ancien schéma ne peut pas représenter des missions propres à une partie. Un rollback du schéma initial supprime les parties et leurs données : arrêter les services applicatifs et sauvegarder la base avant toute intervention de ce type.
 
@@ -244,6 +246,16 @@ Configuration serveur :
 | `DEVICE_ONLINE_TIMEOUT_SECONDS` | `30` | Âge maximal du dernier heartbeat |
 
 Provisionner `PB001` après les migrations avec `docker compose run --rm --entrypoint /app/provision-device backend -box-id PB001`, puis conserver immédiatement le token affiché. Les secrets, la procédure ESP-Prog, le diagnostic prudent du PCB et le test complet sont détaillés dans [`firmware/README.md`](firmware/README.md).
+
+## Durée et déroulement d’une partie
+
+Une partie peut durer **15 minutes (Express)**, **30 minutes (Classique, durée par défaut)**, **60 minutes (Longue)** ou rester ouverte **toute la soirée (∞)**. Le serveur enregistre le choix et l’heure de fin au lancement. Les parties chronométrées se terminent automatiquement à l’échéance, même si aucun joueur n’est connecté ; l’hôte peut aussi les terminer manuellement. Pendant la dernière minute, les missions validées rapportent réellement le double de points. Les parties infinies n’ont ni échéance ni multiplicateur.
+
+À cinq minutes de la fin, les joueurs reçoivent une notification ; à une minute, l’interface passe en phase finale. Le compte à rebours affiché est basé sur l’échéance renvoyée par le serveur et se recale après reconnexion. En mode Chaos, les événements conservent leurs effets habituels et leur fréquence augmente dans le dernier tiers puis pendant la dernière minute.
+
+À la création, l’hôte peut masquer le classement jusqu’à la fin et choisir entre le **mode confiance** (validation immédiate par le joueur) et la **validation par un autre joueur**. Dans ce dernier mode, la mission est révélée au groupe au moment de la demande ; un autre joueur la confirme ou la refuse. Une seule confirmation suffit. Les demandes encore en attente expirent sans points à la fin.
+
+Après la fin, le classement complet et le récapitulatif des missions deviennent accessibles : réussites, missions non terminées, podium et awards déterministes calculés à partir des résultats. Les missions secrètes des autres joueurs ne sont jamais incluses dans les réponses de jeu avant cette étape.
 
 ## API REST
 
@@ -502,9 +514,9 @@ La box `PB001` reste une référence de développement. Pour provisionner une au
 ## Limites et prochaines étapes
 
 - La réussite reste déclarative en Secret Missions, Chaos et Treasure Hunt sans vision. La preuve photo optionnelle de Treasure Hunt est une vérification visuelle, pas une garantie antitriche ; les missions abstraites ou historiques peuvent rester incertaines.
-- Pas de transfert d’hôte, de récupération de token perdu, de révocation, d’expiration automatique ou de nettoyage des anciennes parties. Si l’hôte perd son stockage local pendant une partie, une intervention en base sera nécessaire pour la fermer.
+- Pas de transfert d’hôte, de récupération de token perdu, de révocation ni de nettoyage des anciennes parties. La fermeture des parties temporisées est automatique ; une partie infinie dont l’hôte perd son stockage local nécessitera toujours une intervention pour être fermée.
 - Pas de présence connectée/déconnectée : le lobby liste les inscrits. Pas de fonctionnement hors ligne ; une connexion au serveur est nécessaire.
-- Les événements Chaos sont déclenchés par le nombre de validations, sans timer. Ils ne comprennent pour l’instant que Double Trouble, Bounty et Mission Shuffle.
+- Les événements Chaos disponibles restent Double Trouble, Bounty et Mission Shuffle. Leur cadence dépend désormais du temps restant pour créer une montée en tension.
 - Pas encore de PWA installable, service worker, push, compte email/OAuth, galerie de photos, MQTT, Redis ou modèle ML fourni en production. Le pipeline ML peut entraîner un ranker global sur les données notées réelles et l’intégration Go reste inactive sans artifact explicitement configuré.
 - Le parcours realtime est couvert au niveau transport/hub et dans deux contextes Chromium. Le PCB Insensia vB.1 a été validé sur place avec l’ESP-Prog : S2=`GPIO16`, S3=`GPIO15`, bus I²C SDA=`GPIO3`/SCL=`GPIO2`, contrôleur RGB NCP5623=`0x38` et activation D19=`GPIO33`.
 - Le tag NFC reste passif et doit être programmé séparément avec `https://<domain>/box/PB001`. Il n’existe volontairement ni OTA, MQTT, Bluetooth, lecteur NFC actif, logique batterie, PIR ou WebSocket ESP32.

@@ -11,11 +11,14 @@
     box: Box;
     nickname: string;
     busy: boolean;
-    onsubmit: (name: string, gameName: string, mode: GameMode) => void;
+    onsubmit: (name: string, gameName: string, mode: GameMode, options: { durationMinutes: number; leaderboardVisibility: "visible" | "hidden"; validationMode: "trust" | "peer" }) => void;
   } = $props();
   let name = $state("");
   let gameName = $state("La soirée du salon");
   let selectedMode = $state<GameMode>(DEFAULT_GAME_MODE);
+  let durationMinutes = $state(30);
+  let leaderboardVisibility = $state<"visible" | "hidden">("visible");
+  let validationMode = $state<"trust" | "peer">("trust");
   const mode = $derived(box.active_game?.mode ?? selectedMode);
   const presentation = $derived(GAME_MODES[mode]);
   $effect(() => {
@@ -66,7 +69,7 @@
     <form
       onsubmit={(event) => {
         event.preventDefault();
-        onsubmit(name, gameName, mode);
+        onsubmit(name, gameName, mode, { durationMinutes, leaderboardVisibility, validationMode });
       }}
     >
       {#if !box.active_game}
@@ -94,6 +97,30 @@
           minlength="1"
           required
         />{/if}
+      {#if !box.active_game}
+        <details class="customize-game">
+          <summary>Personnaliser la partie</summary>
+          <fieldset class="duration-options" disabled={busy}>
+            <legend>Durée de la partie</legend>
+            {#each [{ value: 15, label: "15 min", hint: "Express" }, { value: 30, label: "30 min", hint: "Classique" }, { value: 60, label: "60 min", hint: "Longue" }, { value: 0, label: "∞", hint: "Toute la soirée" }] as option}
+              <label class:selected={durationMinutes === option.value}>
+                <input type="radio" name="duration" value={option.value} bind:group={durationMinutes} />
+                <strong>{option.label}</strong><small>{option.hint}</small>
+              </label>
+            {/each}
+          </fieldset>
+          <fieldset class="settings-options" disabled={busy}>
+            <legend>Classement</legend>
+            <label><input type="radio" name="leaderboard" value="visible" bind:group={leaderboardVisibility} /> Visible pendant la partie</label>
+            <label><input type="radio" name="leaderboard" value="hidden" bind:group={leaderboardVisibility} /> Caché jusqu’à la fin</label>
+          </fieldset>
+          <fieldset class="settings-options" disabled={busy}>
+            <legend>Validation des missions</legend>
+            <label><input type="radio" name="validation" value="trust" bind:group={validationMode} /> Mode confiance</label>
+            <label><input type="radio" name="validation" value="peer" bind:group={validationMode} /> Validation par un autre joueur</label>
+          </fieldset>
+        </details>
+      {/if}
       <button
         class="button primary"
         type="submit"
@@ -112,3 +139,20 @@
     </form>
   </section>
 </div>
+
+<style>
+  .customize-game { margin: 18px 0 22px; border: 1px solid var(--line); border-radius: 10px; }
+  .customize-game summary { padding: 13px 14px; color: var(--muted); cursor: pointer; font-weight: 700; }
+  .customize-game[open] summary { color: var(--lime); border-bottom: 1px solid var(--line); }
+  fieldset { border: 0; padding: 14px; margin: 0; }
+  legend { color: var(--muted); font-size: 12px; font-weight: 700; margin-bottom: 9px; }
+  .duration-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .duration-options label { display: grid; text-align: center; padding: 8px 3px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+  .duration-options label.selected { border-color: var(--lime); background: #29331e; }
+  .duration-options input { position: absolute; opacity: 0; }
+  .duration-options input:focus-visible + strong { outline: 2px solid var(--pink); }
+  .duration-options small { color: var(--muted); font-size: 9px; }
+  .settings-options { display: grid; gap: 8px; }
+  .settings-options label { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; }
+  .settings-options input { accent-color: var(--lime); }
+</style>

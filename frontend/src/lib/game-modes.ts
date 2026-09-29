@@ -6,6 +6,7 @@ export const DEFAULT_GAME_MODE: GameMode = "secret_missions";
 interface ModePresentation {
   label: string;
   description: string;
+  example: string;
   minPlayers: number;
   supportsAIGeneration: boolean;
   symbol: string;
@@ -34,6 +35,7 @@ export const GAME_MODES = {
   secret_missions: {
     label: "Secret Missions",
     description: "Accomplis discrètement des missions impliquant tes potes sans te faire griller.",
+    example: 'Ex. Fais prononcer un mot improbable à quelqu’un sans qu’il comprenne pourquoi.',
     minPlayers: 2,
     supportsAIGeneration: true,
     symbol: "✳",
@@ -60,6 +62,7 @@ export const GAME_MODES = {
   treasure_hunt: {
     label: "Treasure Hunt",
     description: "Trouve des objets autour de toi, valide tes découvertes et accumule des points.",
+    example: "Ex. Trouve quelque chose de rouge dans la pièce.",
     minPlayers: 2,
     supportsAIGeneration: true,
     symbol: "⌖",
@@ -86,6 +89,7 @@ export const GAME_MODES = {
   chaos: {
     label: "Chaos",
     description: "Accomplis tes missions pendant que la PartyBox change les règles en plein milieu de la partie.",
+    example: "Ex. Termine ta mission avant que PartyBox ne change les règles.",
     minPlayers: 2,
     supportsAIGeneration: true,
     symbol: "⚡",

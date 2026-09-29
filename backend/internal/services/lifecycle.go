@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"partybox/backend/internal/models"
 	"partybox/backend/internal/repositories"
+	"time"
 )
 
-func (s *Service) create(ctx context.Context, boxID, name, hostName, hash string, mode models.GameMode) (models.Session, error) {
+func (s *Service) create(ctx context.Context, boxID, name, hostName, hash string, mode models.GameMode, options models.GameOptions) (models.Session, error) {
 	var result models.Session
 	err := s.Repo.Transaction(ctx, func(tx *repositories.Transaction) error {
 		if err := tx.LockBox(ctx, boxID); err != nil {
 			return err
 		}
 		var err error
-		result.Game, err = tx.InsertGame(ctx, boxID, name, mode)
+		result.Game, err = tx.InsertGame(ctx, boxID, name, mode, options)
 		if err != nil {
 			return err
 		}
@@ -32,13 +33,16 @@ func (s *Service) create(ctx context.Context, boxID, name, hostName, hash string
 }
 
 func (s *Service) join(ctx context.Context, gameID, name, hash string) (models.Session, error) {
+	if _, err := s.FinishDueGame(ctx, gameID); err != nil {
+		return models.Session{}, err
+	}
 	var result models.Session
 	err := s.Repo.Transaction(ctx, func(tx *repositories.Transaction) error {
 		g, err := tx.LockGame(ctx, gameID)
 		if err != nil {
 			return err
 		}
-		if g.Status == "ended" {
+		if g.Status == "ended" || gameExpired(g, s.now()) {
 			return fmt.Errorf("%w : cette partie est terminée", models.ErrConflict)
 		}
 		result.Game = g
@@ -94,10 +98,13 @@ func (s *Service) transition(ctx context.Context, gameID string, p models.Player
 		} else if g.Status != "playing" && g.Status != "lobby" {
 			return models.ErrConflict
 		}
-		if err = tx.SetGameStatus(ctx, gameID, target); err != nil {
+		if err = tx.SetGameStatus(ctx, gameID, target, s.now()); err != nil {
 			return err
 		}
 		if target == "ended" {
+			if err = tx.ExpireValidations(ctx, gameID, s.now()); err != nil {
+				return err
+			}
 			cancelled, cancelErr := tx.CancelActiveReactions(ctx, gameID, s.now())
 			if cancelErr != nil {
 				return cancelErr
@@ -125,6 +132,9 @@ func (s *Service) transition(ctx context.Context, gameID string, p models.Player
 }
 
 func (s *Service) complete(ctx context.Context, p models.Player, assignmentID string) (models.Completion, error) {
+	if _, err := s.FinishDueGame(ctx, p.GameID); err != nil {
+		return models.Completion{}, err
+	}
 	var result models.Completion
 	err := s.Repo.Transaction(ctx, func(tx *repositories.Transaction) error {
 		// All mutations take this lock first, including End: no score can be
@@ -143,7 +153,7 @@ func (s *Service) complete(ctx context.Context, p models.Player, assignmentID st
 			if status != "assigned" {
 				return fmt.Errorf("%w : cette mission n’est plus active", models.ErrConflict)
 			}
-			if g.Status != "playing" {
+			if g.Status != "playing" || gameExpired(g, s.now()) {
 				return models.ErrConflict
 			}
 			if g.Mode == models.ModeTreasureHunt && s.Vision != nil {
@@ -154,6 +164,22 @@ func (s *Service) complete(ctx context.Context, p models.Player, assignmentID st
 				if proof == nil {
 					return fmt.Errorf("%w : une preuve photo valide est requise", models.ErrConflict)
 				}
+			}
+			if g.ValidationMode == "peer" {
+				if err = tx.RequestValidation(ctx, g.ID, p.ID, assignmentID); err != nil {
+					return err
+				}
+				payload, _ := json.Marshal(map[string]any{"assignment_id": assignmentID})
+				playerID := p.ID
+				if err = tx.RecordGameEvent(ctx, &models.GameEvent{GameID: g.ID, PlayerID: &playerID, Type: models.GameEventValidationRequested, Payload: payload}); err != nil {
+					return err
+				}
+				result.ValidationPending = true
+				result.Player, err = tx.Player(ctx, p.ID)
+				if err == nil {
+					result.Mission, err = tx.CurrentMission(ctx, p.ID)
+				}
+				return err
 			}
 			awardedPoints := points
 			allowChaosTrigger := true
@@ -167,7 +193,10 @@ func (s *Service) complete(ctx context.Context, p models.Player, assignmentID st
 				awardedPoints = effect.AwardedPoints
 				allowChaosTrigger = !effect.HadBlockingEvent
 			}
-			if err = tx.CompleteAssignment(ctx, assignmentID); err != nil {
+			if gameFinalMinute(g, s.now()) {
+				awardedPoints *= 2
+			}
+			if err = tx.CompleteAssignment(ctx, assignmentID, awardedPoints, s.now()); err != nil {
 				return err
 			}
 			if err = tx.AddScore(ctx, p.ID, awardedPoints); err != nil {
@@ -192,7 +221,7 @@ func (s *Service) complete(ctx context.Context, p models.Player, assignmentID st
 			}
 			if g.Mode == models.ModeChaos {
 				if err = s.chaosEngine().MaybeTriggerEvent(
-					ctx, tx, g.ID, allowChaosTrigger,
+					ctx, tx, g.ID, allowChaosTrigger, chaosThreshold(g, s.now()),
 				); err != nil {
 					return err
 				}
@@ -209,4 +238,22 @@ func (s *Service) complete(ctx context.Context, p models.Player, assignmentID st
 		return err
 	})
 	return result, err
+}
+
+func gameExpired(g models.Game, now time.Time) bool { return g.EndsAt != nil && !now.Before(*g.EndsAt) }
+func gameFinalMinute(g models.Game, now time.Time) bool {
+	return g.EndsAt != nil && now.Before(*g.EndsAt) && !now.Before(g.EndsAt.Add(-time.Minute))
+}
+func chaosThreshold(g models.Game, now time.Time) int {
+	if g.EndsAt == nil || g.StartedAt == nil {
+		return 3
+	}
+	remaining := g.EndsAt.Sub(now)
+	if remaining <= time.Minute {
+		return 1
+	}
+	if remaining <= time.Duration(g.DurationMinutes)*time.Minute/3 {
+		return 2
+	}
+	return 3
 }

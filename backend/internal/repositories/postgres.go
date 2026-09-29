@@ -58,7 +58,7 @@ func (r *Repository) Transaction(ctx context.Context, fn func(*Transaction) erro
 	return normalize(tx.Commit(ctx))
 }
 
-const gameColumns = `id, box_id, name, mode, status, created_at, started_at, ended_at`
+const gameColumns = `id, box_id, name, mode, status, created_at, started_at, ended_at, duration_minutes, ends_at, finished_at, leaderboard_visibility, validation_mode`
 
 func game(ctx context.Context, q querier, id string, lock bool) (models.Game, error) {
 	var g models.Game
@@ -66,7 +66,7 @@ func game(ctx context.Context, q querier, id string, lock bool) (models.Game, er
 	if lock {
 		sql += ` FOR UPDATE`
 	}
-	err := q.QueryRow(ctx, sql, id).Scan(&g.ID, &g.BoxID, &g.Name, &g.Mode, &g.Status, &g.CreatedAt, &g.StartedAt, &g.EndedAt)
+	err := q.QueryRow(ctx, sql, id).Scan(&g.ID, &g.BoxID, &g.Name, &g.Mode, &g.Status, &g.CreatedAt, &g.StartedAt, &g.EndedAt, &g.DurationMinutes, &g.EndsAt, &g.FinishedAt, &g.LeaderboardVisibility, &g.ValidationMode)
 	return g, normalize(err)
 }
 
@@ -105,7 +105,7 @@ func (r *Repository) Box(ctx context.Context, id string) (models.Box, error) {
 	}
 	var g models.Game
 	err = r.Pool.QueryRow(ctx, `SELECT `+gameColumns+` FROM games WHERE box_id=$1 AND status IN ('lobby','playing')`, id).
-		Scan(&g.ID, &g.BoxID, &g.Name, &g.Mode, &g.Status, &g.CreatedAt, &g.StartedAt, &g.EndedAt)
+		Scan(&g.ID, &g.BoxID, &g.Name, &g.Mode, &g.Status, &g.CreatedAt, &g.StartedAt, &g.EndedAt, &g.DurationMinutes, &g.EndsAt, &g.FinishedAt, &g.LeaderboardVisibility, &g.ValidationMode)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return b, nil
 	}

@@ -176,7 +176,7 @@ func (s *Service) TickReactions(ctx context.Context) ([]ReactionChange, error) {
 			if txErr != nil {
 				return txErr
 			}
-			if game.Status != "playing" {
+			if game.Status != "playing" || gameExpired(game, now) {
 				return nil
 			}
 			next, txErr := tx.LockReactionState(ctx, gameID)
@@ -238,7 +238,7 @@ func (s *Service) AssignReaction(ctx context.Context, gameID, challengeID string
 		if err != nil {
 			return err
 		}
-		if game.Status != "playing" {
+		if game.Status != "playing" || gameExpired(game, now) {
 			return models.ErrConflict
 		}
 		challenge, err := tx.LockReactionChallenge(ctx, challengeID)
@@ -385,7 +385,7 @@ func (s *Service) SubmitReactionResult(ctx context.Context, boxID string, input 
 			}
 			return models.ErrConflict
 		}
-		if game.Status != "playing" || challenge.Status != "armed" {
+		if game.Status != "playing" || gameExpired(game, now) || challenge.Status != "armed" {
 			return models.ErrConflict
 		}
 		matches, err := tx.CommandMatchesChallenge(ctx, boxID, input.CommandID, input.ChallengeID)

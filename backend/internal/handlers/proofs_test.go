@@ -376,16 +376,26 @@ func TestPhotoMigrationExistingDatabaseAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := &services.Service{Repo: &repositories.Repository{Pool: pool}}
-	host, err := service.Create(ctx, "PB001", "Existing", "Host", models.ModeTreasureHunt)
+	var host models.Session
+	err := pool.QueryRow(ctx, `INSERT INTO games(id,box_id,name,mode,status,started_at)
+		VALUES(gen_random_uuid(),'PB001','Existing','treasure_hunt','playing',now()) RETURNING id`).Scan(&host.Game.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.Join(ctx, host.Game.ID, "Guest"); err != nil {
+	err = pool.QueryRow(ctx, `INSERT INTO players(id,game_id,name,token_hash,is_host)
+		VALUES(gen_random_uuid(),$1,'Host','legacy-host',true) RETURNING id`, host.Game.ID).Scan(&host.Player.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err = service.Start(ctx, host.Game.ID, host.Player); err != nil {
+	host.Player.GameID = host.Game.ID
+	var guestID string
+	err = pool.QueryRow(ctx, `INSERT INTO players(id,game_id,name,token_hash)
+		VALUES(gen_random_uuid(),$1,'Guest','legacy-guest') RETURNING id`, host.Game.ID).Scan(&guestID)
+	if err != nil {
 		t.Fatal(err)
 	}
+	mustExec(t, pool, `INSERT INTO player_missions(id,player_id,mission_id)
+		SELECT gen_random_uuid(),$1,id FROM missions WHERE mode='treasure_hunt' LIMIT 1`, host.Player.ID)
 	mission, err := service.Repo.Mission(ctx, host.Player)
 	if err != nil {
 		t.Fatal(err)

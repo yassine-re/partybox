@@ -42,7 +42,7 @@
         onclick={() => onsubmit(choice.rating)}
       >
         <span aria-hidden="true">{choice.emoji}</span>
-        {choice.label}
+        <span class="sr-only">{choice.label}</span>
       </button>
     {/each}
   </div>
@@ -54,15 +54,15 @@
 
 <style>
   .feedback-panel {
-    margin-top: 16px;
-    padding: 22px;
+    margin-top: 12px;
+    padding: 12px 14px;
     border: 1px solid #596840;
     border-radius: 14px;
     background: linear-gradient(145deg, #202719, #171a14);
   }
   h2 {
-    margin: 10px 0 18px;
-    font-size: 1.3rem;
+    margin: 5px 0 9px;
+    font-size: 1rem;
     letter-spacing: -0.035em;
   }
   .feedback-choices {
@@ -71,8 +71,8 @@
     gap: 8px;
   }
   .feedback-choice {
-    min-height: 70px;
-    padding: 9px 6px;
+    min-height: 44px;
+    padding: 5px 6px;
     border: 1px solid #4a513e;
     border-radius: 9px;
     background: #292e23;
@@ -84,28 +84,30 @@
     margin-bottom: 4px;
     font-size: 22px;
   }
+  .feedback-choice .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .feedback-choice { font-size: 22px; }
   .feedback-choice:hover:enabled,
   .feedback-choice:focus-visible {
     border-color: var(--lime);
     background: #333b28;
   }
   .feedback-error {
-    margin: 12px 0 0;
+    margin: 6px 0 0;
     color: #ffadb9;
     font-size: 12px;
   }
   .text-button {
     display: block;
-    margin: 9px auto -7px;
+    margin: 4px auto -4px;
   }
 
   @media (max-width: 420px) {
     .feedback-panel {
-      padding: 18px 14px;
+      padding: 11px 12px;
     }
     .feedback-choice {
-      min-height: 64px;
-      font-size: 13px;
+      min-height: 42px;
+      font-size: 22px;
     }
   }
 </style>

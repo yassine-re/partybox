@@ -25,9 +25,17 @@ func (h *Handler) registerPlayerRoutes(auth *gin.RouterGroup) {
 		player := currentPlayer(c)
 		result, err := h.Service.Complete(c.Request.Context(), player, body.AssignmentID)
 		if err == nil && !result.AlreadyCompleted {
+			eventType := realtime.EventMissionCompleted
+			if result.ValidationPending {
+				eventType = realtime.EventValidationRequested
+			}
 			h.Realtime.Broadcast(realtime.NewEvent(
-				realtime.EventMissionCompleted, player.GameID, player.ID,
+				eventType, player.GameID, player.ID,
 			))
+			if !result.ValidationPending {
+				h.Realtime.Broadcast(realtime.NewEvent(realtime.EventLeaderboardChanged, player.GameID, ""))
+				h.Realtime.Broadcast(realtime.NewEvent(realtime.EventChaosChanged, player.GameID, ""))
+			}
 		}
 		respond(c, result, err, http.StatusOK)
 	})

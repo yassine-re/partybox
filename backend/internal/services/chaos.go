@@ -16,5 +16,10 @@ func (s *Service) ChaosState(ctx context.Context, gameID string, player models.P
 	if game.Mode != models.ModeChaos {
 		return chaos.Snapshot{}, fmt.Errorf("%w : cette partie n’utilise pas le mode Chaos", models.ErrConflict)
 	}
-	return s.chaosEngine().GetState(ctx, s.Repo, gameID)
+	state, err := s.chaosEngine().GetState(ctx, s.Repo, gameID)
+	if err == nil && game.Status == "playing" {
+		state.Progress.TriggerAt = chaosThreshold(game, s.now())
+		state.Progress.Completed = min(state.Progress.Completed, state.Progress.TriggerAt)
+	}
+	return state, err
 }

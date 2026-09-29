@@ -71,7 +71,13 @@ func (h *Handler) registerProofRoutes(auth *gin.RouterGroup) {
 		player := currentPlayer(c)
 		result, err := h.Service.SubmitMissionProof(c.Request.Context(), player, id, data)
 		if err == nil && result.Completion != nil && !result.Completion.AlreadyCompleted {
-			h.Realtime.Broadcast(realtime.NewEvent(realtime.EventMissionCompleted, player.GameID, player.ID))
+			if result.Completion.ValidationPending {
+				h.Realtime.Broadcast(realtime.NewEvent(realtime.EventValidationRequested, player.GameID, player.ID))
+			} else {
+				h.Realtime.Broadcast(realtime.NewEvent(realtime.EventMissionCompleted, player.GameID, player.ID))
+				h.Realtime.Broadcast(realtime.NewEvent(realtime.EventLeaderboardChanged, player.GameID, ""))
+				h.Realtime.Broadcast(realtime.NewEvent(realtime.EventChaosChanged, player.GameID, ""))
+			}
 		}
 		respond(c, result, err, http.StatusOK)
 	})
