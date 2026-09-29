@@ -237,11 +237,11 @@ Configuration serveur :
 | Variable | Défaut | Rôle |
 | --- | --- | --- |
 | `REACTION_ENABLED` | `true` | Active le scheduler physique |
-| `REACTION_MIN_INTERVAL_SECONDS` | `180` | Borne basse du prochain challenge (3 minutes) |
-| `REACTION_MAX_INTERVAL_SECONDS` | `300` | Borne haute (5 minutes), strictement supérieure à la borne basse |
+| `REACTION_MIN_INTERVAL_SECONDS` | `60` | Borne basse du prochain challenge (1 minute) |
+| `REACTION_MAX_INTERVAL_SECONDS` | `120` | Borne haute (2 minutes), strictement supérieure à la borne basse |
 | `REACTION_ASSIGNMENT_TIMEOUT_SECONDS` | `45` | Temps donné à l’hôte pour assigner les boutons |
 | `REACTION_RESULT_TIMEOUT_SECONDS` | `15` | Marge de retour après le délai local |
-| `DEVICE_ONLINE_TIMEOUT_SECONDS` | `10` | Âge maximal du dernier heartbeat |
+| `DEVICE_ONLINE_TIMEOUT_SECONDS` | `30` | Âge maximal du dernier heartbeat |
 
 Provisionner `PB001` après les migrations avec `docker compose run --rm --entrypoint /app/provision-device backend -box-id PB001`, puis conserver immédiatement le token affiché. Les secrets, la procédure ESP-Prog, le diagnostic prudent du PCB et le test complet sont détaillés dans [`firmware/README.md`](firmware/README.md).
 
