@@ -31,6 +31,22 @@ func (t *Transaction) ExpireValidations(ctx context.Context, gameID string, now 
 	return err
 }
 
+func (t *Transaction) CancelAssignment(ctx context.Context, assignmentID, playerID string) error {
+	command, err := t.tx.Exec(ctx, `UPDATE player_missions SET status='cancelled' WHERE id=$1 AND player_id=$2 AND status='assigned'`, assignmentID, playerID)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() != 1 {
+		return models.ErrConflict
+	}
+	return nil
+}
+
+func (t *Transaction) ExpireAssignmentValidation(ctx context.Context, assignmentID string, now time.Time) error {
+	_, err := t.tx.Exec(ctx, `UPDATE mission_validations SET status='expired',resolved_at=$2 WHERE assignment_id=$1 AND status='pending'`, assignmentID, now)
+	return err
+}
+
 func (t *Transaction) HasGameEvent(ctx context.Context, gameID string, kind models.GameEventType) (bool, error) {
 	var found bool
 	err := t.tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM game_events WHERE game_id=$1 AND type=$2)`, gameID, kind).Scan(&found)

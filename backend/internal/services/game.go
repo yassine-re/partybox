@@ -76,7 +76,7 @@ func (s *Service) CreateConfigured(ctx context.Context, boxID, gameName, playerN
 	if _, ok := models.LookupGameMode(mode); !ok {
 		return models.Session{}, fmt.Errorf("%w : mode de jeu non supporté", models.ErrInvalid)
 	}
-	if options.DurationMinutes != 0 && options.DurationMinutes != 15 && options.DurationMinutes != 30 && options.DurationMinutes != 60 {
+	if options.DurationMinutes != 0 && options.DurationMinutes != 5 && options.DurationMinutes != 15 && options.DurationMinutes != 30 && options.DurationMinutes != 60 {
 		return models.Session{}, models.ErrInvalid
 	}
 	if options.LeaderboardVisibility != "visible" && options.LeaderboardVisibility != "hidden" {

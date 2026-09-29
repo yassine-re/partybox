@@ -39,4 +39,19 @@ func (h *Handler) registerPlayerRoutes(auth *gin.RouterGroup) {
 		}
 		respond(c, result, err, http.StatusOK)
 	})
+	auth.POST("/players/me/mission/skip", func(c *gin.Context) {
+		var body struct {
+			AssignmentID string `json:"assignment_id"`
+		}
+		if !bind(c, &body) {
+			return
+		}
+		player := currentPlayer(c)
+		result, err := h.Service.SkipTreasureMission(c.Request.Context(), player, body.AssignmentID)
+		if err == nil {
+			h.Realtime.Broadcast(realtime.NewEvent(realtime.EventMissionSkipped, player.GameID, player.ID))
+			h.Realtime.Broadcast(realtime.NewEvent(realtime.EventValidationResolved, player.GameID, player.ID))
+		}
+		respond(c, result, err, http.StatusOK)
+	})
 }

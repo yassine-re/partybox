@@ -12,6 +12,7 @@ export interface RealtimeEvent {
     | "player_joined"
     | "game_started"
     | "mission_completed"
+    | "mission_skipped"
     | "game_ended"
     | "reaction_challenge_changed"
     | "reaction_challenge_resolved"
@@ -37,6 +38,7 @@ const eventTypes = new Set<RealtimeEvent["type"]>([
   "player_joined",
   "game_started",
   "mission_completed",
+  "mission_skipped",
   "game_ended",
   "reaction_challenge_changed",
   "reaction_challenge_resolved",

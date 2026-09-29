@@ -335,6 +335,17 @@
     });
   }
 
+  function skipMission() {
+    if (!session || !mission || game?.mode !== "treasure_hunt") return;
+    const current = session;
+    const assignmentId = mission.id;
+    void action(async () => {
+      await api.skipMission(current.token, assignmentId);
+      feedbackAssignmentId = null;
+      notice = "Recherche passée. Une nouvelle recherche t’attend.";
+    });
+  }
+
   async function submitFeedback(rating: MissionFeedbackRating) {
     if (!session || !feedbackAssignmentId || feedbackBusy) return;
     const token = session.token;
@@ -375,6 +386,8 @@
       const result = await api.submitMissionProof(current.token, id, image);
       if (result.completion) {
         mission = result.completion.mission;
+        missionValidationPending = Boolean(result.completion.validation_pending);
+        pendingMissionId = result.completion.validation_pending ? id : "";
         notice = result.completion.validation_pending
           ? "Photo vérifiée. Demande envoyée : un autre joueur doit confirmer ta découverte."
           : result.completion.already_completed
@@ -531,6 +544,7 @@
       {feedbackBusy}
       {feedbackError}
       oncomplete={complete}
+      onskipmission={skipMission}
       onfeedback={submitFeedback}
       onfeedbackskip={skipFeedback}
       onrefresh={() => void sync()}

@@ -8,6 +8,7 @@ const (
 	EventPlayerJoined              EventType = "player_joined"
 	EventGameStarted               EventType = "game_started"
 	EventMissionCompleted          EventType = "mission_completed"
+	EventMissionSkipped            EventType = "mission_skipped"
 	EventGameEnded                 EventType = "game_ended"
 	EventFiveMinutes               EventType = "five_minutes_remaining"
 	EventFinalMinute               EventType = "final_minute"
