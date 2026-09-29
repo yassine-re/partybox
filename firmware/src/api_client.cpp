@@ -96,7 +96,7 @@ bool ApiClient::acknowledge(const String& commandId) {
   return successful(status);
 }
 
-bool ApiClient::submitReaction(const ReactionOutcome& outcome, const String& eventId) {
+ReactionSubmitResult ApiClient::submitReaction(const ReactionOutcome& outcome, const String& eventId) {
   JsonDocument document;
   document["event_id"] = eventId;
   document["challenge_id"] = outcome.challengeId.c_str();
@@ -110,5 +110,7 @@ bool ApiClient::submitReaction(const ReactionOutcome& outcome, const String& eve
   String response;
   const int status = request("POST", devicePath("/reaction-results"), body, response);
   Serial.printf("[REACTION] résultat HTTP %d\n", status);
-  return successful(status);
+  if (successful(status)) return ReactionSubmitResult::Confirmed;
+  if (status == 409) return ReactionSubmitResult::Discarded;
+  return ReactionSubmitResult::Retry;
 }

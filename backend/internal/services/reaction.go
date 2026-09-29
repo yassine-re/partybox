@@ -32,9 +32,9 @@ type ReactionConfig struct {
 
 func DefaultReactionConfig() ReactionConfig {
 	return ReactionConfig{
-		Enabled: true, MinInterval: 3 * time.Minute, MaxInterval: 5 * time.Minute,
+		Enabled: true, MinInterval: time.Minute, MaxInterval: 2 * time.Minute,
 		AssignmentTimeout: 45 * time.Second, ResultTimeout: 15 * time.Second,
-		DeviceOnline: 10 * time.Second,
+		DeviceOnline: 30 * time.Second,
 	}
 }
 

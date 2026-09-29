@@ -48,9 +48,9 @@ func TestParseReactionConfig(t *testing.T) {
 	}
 }
 
-func TestDefaultReactionConfigUsesOccasionalCadence(t *testing.T) {
+func TestDefaultReactionConfigUsesOneToTwoMinuteCadence(t *testing.T) {
 	config := DefaultReactionConfig()
-	if config.MinInterval != 3*time.Minute || config.MaxInterval != 5*time.Minute {
-		t.Fatalf("unexpected default cadence: %s-%s", config.MinInterval, config.MaxInterval)
+	if config.MinInterval != time.Minute || config.MaxInterval != 2*time.Minute || config.DeviceOnline != 30*time.Second {
+		t.Fatalf("unexpected default reaction config: %+v", config)
 	}
 }

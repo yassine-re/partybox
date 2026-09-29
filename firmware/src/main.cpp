@@ -99,21 +99,30 @@ void loop() {
 
   if (apiTransportReady() && reaction.shouldReport(nowMs)) {
     if (pendingEventId.isEmpty()) pendingEventId = identity.nextEventId();
-    const bool delivered = api.submitReaction(reaction.outcome(), pendingEventId);
-    reaction.reportAttempt(nowMs, delivered);
-    if (delivered) {
+    const ReactionSubmitResult result = api.submitReaction(reaction.outcome(), pendingEventId);
+    reaction.reportAttempt(nowMs, result != ReactionSubmitResult::Retry);
+    if (result != ReactionSubmitResult::Retry) {
       pendingEventId = "";
-      leds.confirm(nowMs);
-      Serial.println("[REACTION] résultat confirmé par le serveur");
+      if (result == ReactionSubmitResult::Confirmed) {
+        leds.confirm(nowMs);
+        Serial.println("[REACTION] résultat confirmé par le serveur");
+      } else {
+        Serial.println("[REACTION] challenge terminé côté serveur, résultat abandonné");
+      }
     }
   }
 
-  // Network calls are deliberately forbidden while red/green timing is active.
+  // Report first so a due heartbeat cannot delay the result. Keep heartbeats
+  // running during retries, but never make network calls while timing red/green.
+  const bool reactionTiming = reaction.state() == ReactionState::ARMED_RED ||
+                              reaction.state() == ReactionState::GREEN_ACTIVE;
+  if (apiTransportReady() && !reactionTiming &&
+      static_cast<long>(nowMs - nextHeartbeatMs) >= 0) {
+    backendReady = api.heartbeat(nowMs, WiFi.RSSI());
+    nextHeartbeatMs = nowMs + HEARTBEAT_INTERVAL_MS;
+  }
+
   if (apiTransportReady() && reaction.state() == ReactionState::IDLE) {
-    if (static_cast<long>(nowMs - nextHeartbeatMs) >= 0) {
-      backendReady = api.heartbeat(nowMs, WiFi.RSSI());
-      nextHeartbeatMs = nowMs + HEARTBEAT_INTERVAL_MS;
-    }
     if (static_cast<long>(nowMs - nextPollMs) >= 0) {
       ReactionCommand command;
       if (api.pollCommand(command)) {

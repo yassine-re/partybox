@@ -206,18 +206,19 @@
       await sync();
       loading = false;
       if (session) startRealtime();
-      // No polling while realtime is healthy. This only covers a broken
-      // socket (and lets a pre-game entry screen discover a new lobby).
+      // Heartbeats do not emit realtime events, so refresh device presence
+      // periodically during play even while the socket is connected.
       fallbackTimer = setInterval(() => {
         if (
           !disposed &&
           !busy &&
           !document.hidden &&
-          realtimeStatus !== "connected"
+          (realtimeStatus !== "connected" ||
+            (game?.status === "playing" && reactionState?.enabled))
         ) {
           void sync();
         }
-      }, 25_000);
+      }, 15_000);
     }
     void initialize();
     const visible = () => {
