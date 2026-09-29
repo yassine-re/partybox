@@ -95,6 +95,7 @@ func run() error {
 	if s.Reaction.Enabled {
 		go runReactionScheduler(ctx, s, realtimeServer)
 	}
+	go runGameScheduler(ctx, s, realtimeServer)
 	server := &http.Server{
 		Addr:              ":" + env("BACKEND_PORT", "8080"),
 		Handler:           handlers.Router(s, realtimeServer, frontendURL),
@@ -114,6 +115,35 @@ func run() error {
 		return server.Shutdown(shutdown)
 	}
 	return nil
+}
+
+func runGameScheduler(ctx context.Context, service *services.Service, server *realtime.Server) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			changes, err := service.TickGames(ctx)
+			if err != nil {
+				if ctx.Err() == nil {
+					slog.Error("game scheduler tick failed", "error", err)
+				}
+				continue
+			}
+			for _, change := range changes {
+				kind := realtime.EventGameEnded
+				switch change.Type {
+				case "five_minutes_remaining":
+					kind = realtime.EventFiveMinutes
+				case "final_minute":
+					kind = realtime.EventFinalMinute
+				}
+				server.Broadcast(realtime.NewEvent(kind, change.GameID, ""))
+			}
+		}
+	}
 }
 
 func runReactionScheduler(ctx context.Context, service *services.Service, server *realtime.Server) {

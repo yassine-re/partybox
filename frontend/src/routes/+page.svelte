@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  let boxId = $state("PB001");
+  let boxId = $state("");
 </script>
 
 <section class="home-hero">
@@ -29,11 +29,13 @@
         maxlength="40"
         required
         autocomplete="off"
+        placeholder="Ex. PB7K3F"
       /><button class="button primary" type="submit"
         >C’est parti <span aria-hidden="true">↗</span></button
       >
     </div>
-    <p class="form-hint">Ou approche ton téléphone du tag NFC de la box.</p>
+    <p class="form-hint">Le code est inscrit sur ta PartyBox. Tes amis peuvent aussi rejoindre directement grâce au lien d’invitation.</p>
+    <p class="form-hint">Approche ton téléphone du tag NFC pour jouer instantanément.</p>
   </form>
   <div class="home-art" aria-hidden="true">
     <div class="orbit orbit-one"></div>

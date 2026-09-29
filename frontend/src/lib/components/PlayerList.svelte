@@ -33,14 +33,14 @@
             >{/if}</strong
         ><small
           >{ranked
-            ? `${player.completed_missions} ${player.completed_missions > 1 ? GAME_MODES[mode].completedPlural : GAME_MODES[mode].completedSingular}`
+            ? `${player.completed_missions ?? 0} ${(player.completed_missions ?? 0) > 1 ? GAME_MODES[mode].completedPlural : GAME_MODES[mode].completedSingular}`
             : player.is_host
               ? "Aux commandes de la soirée"
               : "Prêt à jouer"}</small
         >
       </div>
       {#if ranked}<span class="player-score"
-          >{player.score}<small>PTS</small></span
+          >{player.score ?? "—"}<small>PTS</small></span
         >{:else if player.is_host}<span class="host-tag">HÔTE</span>{:else}<span
           class="ready-check"
           aria-label="Prêt">✓</span

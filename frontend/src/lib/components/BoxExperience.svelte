@@ -23,6 +23,8 @@
     Session,
     ReactionAssignment,
     ReactionState,
+    GameRecap,
+    ValidationRequest,
   } from "$lib/api/types";
   import EntryForm from "./EntryForm.svelte";
   import FinalResults from "./game/FinalResults.svelte";
@@ -39,6 +41,10 @@
   let chaosState = $state<ChaosState | null>(null);
   let proofStatus = $state<ProofStatus | null>(null);
   let reactionState = $state<ReactionState | null>(null);
+  let validationRequests = $state<ValidationRequest[]>([]);
+  let recap = $state<GameRecap | null>(null);
+  let missionValidationPending = $state(false);
+  let pendingMissionId = $state("");
   let nickname = $state("");
   let loading = $state(true);
   let busy = $state(false);
@@ -89,7 +95,14 @@
     const current = session;
     if (!current || disposed) return;
     const client = new GameRealtime(current.gameId, current.token, {
-      onEvent: () => queueRealtimeRefresh(),
+      onEvent: (event) => {
+        if (event.type === "validation_resolved" && event.player_id === playerId) {
+          missionValidationPending = false;
+          pendingMissionId = "";
+          notice = "Validation mise à jour. Regarde ta mission pour continuer.";
+        }
+        queueRealtimeRefresh();
+      },
       onStatus: (status) => {
         const wasConnected = realtimeStatus === "connected";
         realtimeStatus = status;
@@ -119,12 +132,22 @@
         ? await api.missionProofStatus(current.token) : null;
       const nextReactionState = nextGame.status === "playing"
         ? await api.reaction(current.gameId, current.token) : null;
+      const nextValidations = nextGame.status === "playing" && nextGame.validation_mode === "peer"
+        ? (await api.validations(current.gameId, current.token)).requests : [];
+      const nextRecap = nextGame.status === "ended"
+        ? await api.recap(current.gameId, current.token) : null;
       if (disposed) return;
       game = nextGame;
       mission = nextMission;
+      if (pendingMissionId && nextMission?.id !== pendingMissionId) {
+        missionValidationPending = false;
+        pendingMissionId = "";
+      }
       chaosState = nextChaosState;
       proofStatus = nextProofStatus;
       reactionState = nextReactionState;
+      validationRequests = nextValidations;
+      recap = nextRecap;
     } else {
       const nextBox = await api.box(boxId);
       if (disposed) return;
@@ -169,6 +192,10 @@
         chaosState = null;
         proofStatus = null;
         reactionState = null;
+        validationRequests = [];
+        recap = null;
+        missionValidationPending = false;
+        pendingMissionId = "";
         feedbackAssignmentId = null;
         feedbackError = "";
         notice =
@@ -261,15 +288,19 @@
     nickname = result.player.name;
     feedbackAssignmentId = null;
     feedbackError = "";
+    validationRequests = [];
+    recap = null;
+    missionValidationPending = false;
+    pendingMissionId = "";
     storageWarning = !saveSession(boxId, session, nickname);
     startRealtime();
   }
 
-  function enter(name: string, gameName: string, selectedMode: GameMode) {
+  function enter(name: string, gameName: string, selectedMode: GameMode, options: { durationMinutes: number; leaderboardVisibility: "visible" | "hidden"; validationMode: "trust" | "peer" }) {
     void action(async () => {
       const result = box?.active_game
         ? await api.join(box.active_game.id, name)
-        : await api.create(boxId, gameName, name, selectedMode);
+        : await api.create(boxId, gameName, name, selectedMode, options);
       acceptSession(result);
     });
   }
@@ -281,12 +312,20 @@
     void action(async () => {
       const result = await api.complete(token, completedAssignmentId);
       mission = result.mission;
+      if (result.validation_pending) {
+        missionValidationPending = true;
+        pendingMissionId = completedAssignmentId;
+        notice = "Demande envoyée. Un autre joueur doit confirmer ta mission.";
+        return;
+      }
+      missionValidationPending = false;
+      pendingMissionId = "";
       notice = result.already_completed
         ? mode.alreadyCompletedMessage
         : mode.completionMessage(result.awarded_points);
       if (
         shouldRequestMissionFeedback(
-          result.player.completed_missions,
+          result.player.completed_missions ?? 0,
           result.already_completed,
         )
       ) {
@@ -336,12 +375,15 @@
       const result = await api.submitMissionProof(current.token, id, image);
       if (result.completion) {
         mission = result.completion.mission;
-        notice = result.completion.already_completed
-          ? mode.alreadyCompletedMessage
-          : `Photo validée ! ${mode.completionMessage(result.completion.awarded_points)}`;
+        notice = result.completion.validation_pending
+          ? "Photo vérifiée. Demande envoyée : un autre joueur doit confirmer ta découverte."
+          : result.completion.already_completed
+            ? mode.alreadyCompletedMessage
+            : `Photo validée ! ${mode.completionMessage(result.completion.awarded_points)}`;
         if (
+          !result.completion.validation_pending &&
           shouldRequestMissionFeedback(
-            result.completion.player.completed_missions,
+            result.completion.player.completed_missions ?? 0,
             result.completion.already_completed,
           )
         ) {
@@ -389,9 +431,13 @@
       session = null;
       game = null;
       mission = null;
+      missionValidationPending = false;
+      pendingMissionId = "";
       chaosState = null;
       proofStatus = null;
       reactionState = null;
+      validationRequests = [];
+      recap = null;
       feedbackAssignmentId = null;
       feedbackError = "";
       playerId = "";
@@ -399,12 +445,29 @@
     });
   }
   async function share() {
+    const text = `🎉 Rejoins ma PartyBox : ${game?.name ?? "la soirée"}`;
     try {
+      if (navigator.share) {
+        await navigator.share({ title: "PartyBox", text, url: window.location.href });
+        return;
+      }
       await navigator.clipboard.writeText(window.location.href);
-      notice = "Lien copié. Envoie-le à tes amis !";
-    } catch {
-      notice = `Partage cette adresse : ${window.location.href}`;
+      notice = "Lien copié !";
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        notice = "Lien copié !";
+      } catch {
+        notice = `Partage cette adresse : ${window.location.href}`;
+      }
     }
+  }
+  function resolveValidation(requestId: string, approved: boolean) {
+    if (!session || !game) return;
+    const current = session;
+    const currentGameId = game.id;
+    void action(async () => { await api.resolveValidation(currentGameId, requestId, current.token, approved); });
   }
 </script>
 
@@ -459,6 +522,9 @@
       {chaosState}
       {proofStatus}
       {reactionState}
+      {validationRequests}
+      validationPending={missionValidationPending}
+      onvalidationresolve={resolveValidation}
       onreactionassign={assignReaction}
       onproofsubmit={submitProof}
       {feedbackAssignmentId}
@@ -471,7 +537,7 @@
       ontabchange={(nextTab) => (tab = nextTab)}
     />
   {:else}
-    <FinalResults {game} {players} {playerId} {busy} onback={backToBox} />
+    <FinalResults {game} {players} {playerId} {busy} {recap} onback={backToBox} />
   {/if}
 
   <div class="game-bottom">

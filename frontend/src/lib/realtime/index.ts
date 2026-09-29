@@ -14,7 +14,15 @@ export interface RealtimeEvent {
     | "mission_completed"
     | "game_ended"
     | "reaction_challenge_changed"
-    | "reaction_challenge_resolved";
+    | "reaction_challenge_resolved"
+    | "validation_requested"
+    | "validation_resolved"
+    | "game_phase_changed"
+    | "chaos_event"
+    | "chaos_changed"
+    | "leaderboard_changed"
+    | "five_minutes_remaining"
+    | "final_minute";
   game_id: string;
   player_id?: string;
   occurred_at: string;
@@ -32,6 +40,14 @@ const eventTypes = new Set<RealtimeEvent["type"]>([
   "game_ended",
   "reaction_challenge_changed",
   "reaction_challenge_resolved",
+  "validation_requested",
+  "validation_resolved",
+  "game_phase_changed",
+  "chaos_event",
+  "chaos_changed",
+  "leaderboard_changed",
+  "five_minutes_remaining",
+  "final_minute",
 ]);
 
 function websocketURL(gameId: string, ticket: string): string {

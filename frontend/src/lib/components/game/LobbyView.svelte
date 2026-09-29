@@ -40,7 +40,7 @@
     <h2>Réunis<br />ta bande<span class="accent">.</span></h2>
     <p>{mode.lobbyDescription}</p>
     <button class="button outline" onclick={onshare}
-      >Copier le lien d’invitation <span aria-hidden="true">↗</span></button
+      >Inviter mes potes <span aria-hidden="true">↗</span></button
     >
     <p class="form-hint">Le même lien pour tous. Ou un simple scan NFC.</p>
   </section>
@@ -69,12 +69,15 @@
         </div>{/if}
     </section>
     {#if me?.is_host && token && mode.supportsAIGeneration}
-      <AIMissionPanel
-        {game}
-        {token}
-        disabled={busy}
-        ongeneratingchange={handleAIGeneratingChange}
-      />
+      <details class="customize-missions">
+        <summary>✨ Personnaliser les missions</summary>
+        <AIMissionPanel
+          {game}
+          {token}
+          disabled={busy}
+          ongeneratingchange={handleAIGeneratingChange}
+        />
+      </details>
     {/if}
   </div>
 </div>
@@ -85,4 +88,8 @@
     flex-direction: column;
     gap: 16px;
   }
+  .customize-missions { border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #171916); }
+  .customize-missions summary { padding: 14px 16px; cursor: pointer; color: var(--muted); font-weight: 700; }
+  .customize-missions[open] summary { color: var(--lime); border-bottom: 1px solid var(--line); }
+  .customize-missions :global(.ai-mission-panel) { margin-top: 0; }
 </style>

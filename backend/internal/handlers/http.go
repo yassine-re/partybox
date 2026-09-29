@@ -114,6 +114,13 @@ func (h *Handler) authenticate(c *gin.Context) {
 		c.Abort()
 		return
 	}
+	if ended, finishErr := h.Service.FinishDueGame(c.Request.Context(), p.GameID); finishErr != nil {
+		respond(c, nil, finishErr, 0)
+		c.Abort()
+		return
+	} else if ended {
+		h.Realtime.Broadcast(realtime.NewEvent(realtime.EventGameEnded, p.GameID, ""))
+	}
 	c.Set("player", p)
 	c.Next()
 }

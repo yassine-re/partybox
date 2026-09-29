@@ -7,6 +7,7 @@ import type {
   Completion,
   Game,
   GameMode,
+  GameRecap,
   Mission,
   MissionFeedback,
   MissionFeedbackRating,
@@ -17,6 +18,7 @@ import type {
   ReactionChallenge,
   ReactionState,
   Session,
+  ValidationRequest,
 } from "./types";
 
 export class ApiError extends Error {
@@ -86,16 +88,22 @@ export const api = {
     return data as ProofResponse;
   },
   box: (id: string) => request<Box>(`/boxes/${encodeURIComponent(id)}`),
-  create: (id: string, name: string, player_name: string, mode: GameMode) =>
+  create: (id: string, name: string, player_name: string, mode: GameMode, options: { durationMinutes: number; leaderboardVisibility: "visible" | "hidden"; validationMode: "trust" | "peer" }) =>
     request<Session>(`/boxes/${encodeURIComponent(id)}/games`, undefined, {
       name,
       player_name,
       mode,
+      duration_minutes: options.durationMinutes,
+      leaderboard_visibility: options.leaderboardVisibility,
+      validation_mode: options.validationMode,
     }),
   join: (id: string, name: string) =>
     request<Session>(`/games/${id}/join`, undefined, { name }),
   me: (token: string) => request<Player>("/players/me", token),
   game: (id: string, token: string) => request<Game>(`/games/${id}`, token),
+  validations: (id: string, token: string) => request<{ requests: ValidationRequest[] }>(`/games/${id}/validations`, token),
+  resolveValidation: (id: string, requestId: string, token: string, approved: boolean) => request(`/games/${id}/validations/${requestId}/resolve`, token, { approved }),
+  recap: (id: string, token: string) => request<GameRecap>(`/games/${id}/recap`, token),
   chaos: (id: string, token: string) =>
     request<ChaosState>(`/games/${id}/chaos`, token),
   mission: (token: string) =>

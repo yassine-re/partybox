@@ -69,8 +69,21 @@ func newToken() (string, error) {
 }
 
 func (s *Service) Create(ctx context.Context, boxID, gameName, playerName string, mode models.GameMode) (models.Session, error) {
+	return s.CreateConfigured(ctx, boxID, gameName, playerName, mode, models.GameOptions{DurationMinutes: 30, LeaderboardVisibility: "visible", ValidationMode: "trust"})
+}
+
+func (s *Service) CreateConfigured(ctx context.Context, boxID, gameName, playerName string, mode models.GameMode, options models.GameOptions) (models.Session, error) {
 	if _, ok := models.LookupGameMode(mode); !ok {
 		return models.Session{}, fmt.Errorf("%w : mode de jeu non supporté", models.ErrInvalid)
+	}
+	if options.DurationMinutes != 0 && options.DurationMinutes != 15 && options.DurationMinutes != 30 && options.DurationMinutes != 60 {
+		return models.Session{}, models.ErrInvalid
+	}
+	if options.LeaderboardVisibility != "visible" && options.LeaderboardVisibility != "hidden" {
+		return models.Session{}, models.ErrInvalid
+	}
+	if options.ValidationMode != "trust" && options.ValidationMode != "peer" {
+		return models.Session{}, models.ErrInvalid
 	}
 	gameName, err := cleanName(gameName, 60)
 	if err != nil {
@@ -84,7 +97,7 @@ func (s *Service) Create(ctx context.Context, boxID, gameName, playerName string
 	if err != nil {
 		return models.Session{}, err
 	}
-	result, err := s.create(ctx, boxID, gameName, playerName, TokenHash(token), mode)
+	result, err := s.create(ctx, boxID, gameName, playerName, TokenHash(token), mode, options)
 	if err == nil {
 		result.Token = token
 	}
@@ -119,7 +132,23 @@ func (s *Service) Game(ctx context.Context, id string, p models.Player) (models.
 	if p.GameID != id {
 		return models.Game{}, models.ErrForbidden
 	}
-	return s.Repo.Game(ctx, id)
+	_, err := s.FinishDueGame(ctx, id)
+	if err != nil {
+		return models.Game{}, err
+	}
+	g, err := s.Repo.Game(ctx, id)
+	if err != nil {
+		return g, err
+	}
+	if g.Status == "playing" && g.LeaderboardVisibility == "hidden" {
+		for i := range g.Players {
+			if g.Players[i].ID != p.ID {
+				g.Players[i].Score = 0
+				g.Players[i].CompletedMissions = 0
+			}
+		}
+	}
+	return g, nil
 }
 
 func (s *Service) Start(ctx context.Context, id string, p models.Player) error {

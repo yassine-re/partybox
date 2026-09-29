@@ -25,9 +25,9 @@ export interface Player {
   id: string;
   game_id: string;
   name: string;
-  score: number;
+  score?: number;
   is_host: boolean;
-  completed_missions: number;
+  completed_missions?: number;
 }
 export interface Game {
   id: string;
@@ -39,6 +39,11 @@ export interface Game {
   created_at: string;
   started_at: string | null;
   ended_at: string | null;
+  duration_minutes: number;
+  ends_at: string | null;
+  finished_at: string | null;
+  leaderboard_visibility: "visible" | "hidden";
+  validation_mode: "trust" | "peer";
 }
 export interface Box {
   id: string;
@@ -67,6 +72,21 @@ export interface Completion {
   already_completed: boolean;
   player: Player;
   mission: Mission | null;
+  validation_pending?: boolean;
+}
+
+export interface ValidationRequest {
+  id: string;
+  assignment_id: string;
+  player_id: string;
+  player_name: string;
+  mission_text: string;
+  requested_at: string;
+}
+
+export interface GameRecap {
+  players: Array<{ player: Player; missions: Array<{ text: string; points: number; awarded_points?: number; status: "completed" | "assigned" | "cancelled"; completed_at?: string | null }> }>;
+  chaos_events?: Array<{ type: string; occurred_at?: string; payload?: unknown }>;
 }
 
 export interface MissionProof {

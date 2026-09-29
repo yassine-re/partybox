@@ -129,14 +129,19 @@ func (engine *Engine) MaybeTriggerEvent(
 	store Store,
 	gameID string,
 	allowTrigger bool,
+	thresholds ...int,
 ) error {
+	threshold := CompletionThreshold
+	if len(thresholds) > 0 && thresholds[0] > 0 {
+		threshold = thresholds[0]
+	}
 	state, err := store.LockChaosState(ctx, gameID)
 	if err != nil {
 		return err
 	}
 	state.CompletionsSinceEvent++
 	if !allowTrigger || (state.EventType != nil && state.RemainingUses > 0) ||
-		state.CompletionsSinceEvent < CompletionThreshold {
+		state.CompletionsSinceEvent < threshold {
 		return store.UpdateChaosState(ctx, state)
 	}
 

@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"partybox/backend/internal/models"
+	"time"
 )
 
 // These operations share the same transaction. The service owns game rules;
@@ -12,9 +13,9 @@ func (t *Transaction) LockBox(ctx context.Context, id string) error {
 	return t.tx.QueryRow(ctx, `SELECT id FROM boxes WHERE id=$1 FOR UPDATE`, id).Scan(&found)
 }
 
-func (t *Transaction) InsertGame(ctx context.Context, boxID, name string, mode models.GameMode) (models.Game, error) {
+func (t *Transaction) InsertGame(ctx context.Context, boxID, name string, mode models.GameMode, options models.GameOptions) (models.Game, error) {
 	var id string
-	err := t.tx.QueryRow(ctx, `INSERT INTO games(id,box_id,name,mode) VALUES(gen_random_uuid(),$1,$2,$3) RETURNING id`, boxID, name, mode).Scan(&id)
+	err := t.tx.QueryRow(ctx, `INSERT INTO games(id,box_id,name,mode,duration_minutes,leaderboard_visibility,validation_mode) VALUES(gen_random_uuid(),$1,$2,$3,$4,$5,$6) RETURNING id`, boxID, name, mode, options.DurationMinutes, options.LeaderboardVisibility, options.ValidationMode).Scan(&id)
 	if err != nil {
 		return models.Game{}, err
 	}
@@ -45,10 +46,12 @@ func (t *Transaction) CurrentMission(ctx context.Context, playerID string) (*mod
 	return currentMission(ctx, t.tx, playerID)
 }
 
-func (t *Transaction) SetGameStatus(ctx context.Context, gameID, status string) error {
+func (t *Transaction) SetGameStatus(ctx context.Context, gameID, status string, now time.Time) error {
 	_, err := t.tx.Exec(ctx, `UPDATE games SET status=$2,
-		started_at=CASE WHEN $2='playing' THEN now() ELSE started_at END,
-		ended_at=CASE WHEN $2='ended' THEN now() ELSE ended_at END WHERE id=$1`, gameID, status)
+		started_at=CASE WHEN $2='playing' THEN $3 ELSE started_at END,
+		ends_at=CASE WHEN $2='playing' AND duration_minutes>0 THEN $3+(duration_minutes * interval '1 minute') ELSE ends_at END,
+		ended_at=CASE WHEN $2='ended' THEN $3 ELSE ended_at END,
+		finished_at=CASE WHEN $2='ended' THEN $3 ELSE finished_at END WHERE id=$1`, gameID, status, now)
 	return err
 }
 
@@ -57,8 +60,8 @@ func (t *Transaction) Assignment(ctx context.Context, id, playerID string) (stat
 	return
 }
 
-func (t *Transaction) CompleteAssignment(ctx context.Context, id string) error {
-	_, err := t.tx.Exec(ctx, `UPDATE player_missions SET status='completed',completed_at=now() WHERE id=$1`, id)
+func (t *Transaction) CompleteAssignment(ctx context.Context, id string, awarded int, now time.Time) error {
+	_, err := t.tx.Exec(ctx, `UPDATE player_missions SET status='completed',completed_at=$3,awarded_points=$2 WHERE id=$1`, id, awarded, now)
 	return err
 }
 
